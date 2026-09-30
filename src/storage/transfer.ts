@@ -1,0 +1,184 @@
+import { DEFAULT_PROMPT_TEMPLATE, newStory, type Story } from "../types";
+export function exportProject(s: Story) {
+  return JSON.stringify(
+    {
+      format: "margin-project",
+      version: 1,
+      story: {
+        ...s,
+        connection: {
+          kind: s.connection.kind,
+          url: s.connection.url,
+          model: s.connection.model,
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+export function importProject(raw: string): Story {
+  const d = JSON.parse(raw);
+  if (d.format !== "margin-project" || d.version !== 1 || !d.story)
+    throw new Error("This is not a supported Margin project.");
+  const s = d.story;
+  const base = newStory();
+  if (s.promptTemplate !== undefined && typeof s.promptTemplate !== "string")
+    throw new Error("Invalid prompt template.");
+  if (s.settings && s.settings.inputTokens === undefined)
+    s.settings.inputTokens = s.settings.context;
+  for (const k of ["title", "text", "lastUpdateText"])
+    if (typeof s[k] !== "string") throw new Error("Invalid project text.");
+  for (const k of ["notes", "lore", "segments", "snapshots", "past", "future"])
+    if (!Array.isArray(s[k])) throw new Error("Invalid project collection.");
+  if (
+    !s.memory ||
+    !s.author ||
+    typeof s.memory.content !== "string" ||
+    typeof s.author.content !== "string"
+  )
+    throw new Error("Invalid memory.");
+  if (
+    !["kobold", "openai", "horde", "openrouter"].includes(s.connection?.kind) ||
+    typeof s.connection.url !== "string" ||
+    typeof s.connection.model !== "string"
+  )
+    throw new Error("Invalid provider.");
+  for (const k of Object.keys(base.settings)) {
+    if (
+      typeof s.settings?.[k] !== typeof (base.settings as any)[k] ||
+      (typeof s.settings[k] === "number" && !Number.isFinite(s.settings[k]))
+    )
+      throw new Error("Invalid generation settings.");
+  }
+  if (
+    s.settings.context <= 0 ||
+    s.settings.maxTokens <= 0 ||
+    s.settings.inputTokens <= 0
+  )
+    throw new Error("Invalid token limits.");
+  for (const n of s.notes) {
+    if (
+      typeof n.id !== "string" ||
+      typeof n.title !== "string" ||
+      typeof n.content !== "string" ||
+      typeof n.keywords !== "string" ||
+      !Array.isArray(n.revisions) ||
+      !["off", "auto", "review"].includes(n.mode)
+    )
+      throw new Error("Invalid note.");
+  }
+  for (const l of s.lore) {
+    if (
+      typeof l.content !== "string" ||
+      typeof l.keywords !== "string" ||
+      typeof l.secondary !== "string" ||
+      typeof l.title !== "string" ||
+      !Number.isFinite(l.scanDepth)
+    )
+      throw new Error("Invalid lore entry.");
+  }
+  const text = (v: unknown) => typeof v === "string";
+  const finite = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+  const position = (v: unknown) => v === "before" || v === "after";
+  const validNotes = (notes: any): boolean =>
+    Array.isArray(notes) &&
+    notes.every(
+      (n: any) =>
+        n &&
+        ["id", "title", "content", "keywords"].every((k) => text(n[k])) &&
+        ["enabled", "include", "aiEditable", "locked"].every(
+          (k) => typeof n[k] === "boolean",
+        ) &&
+        position(n.position) &&
+        ["off", "auto", "review"].includes(n.mode) &&
+        Array.isArray(n.revisions) &&
+        n.revisions.every(
+          (r: any) =>
+            r &&
+            text(r.id) &&
+            text(r.content) &&
+            text(r.source) &&
+            finite(r.at),
+        ),
+    ) &&
+    new Set(notes.map((n: any) => n.id)).size === notes.length;
+  if (
+    !validNotes(s.notes) ||
+    !finite(s.loreBudget) ||
+    s.loreBudget < 0 ||
+    !s.past.every(text) ||
+    !s.future.every(text) ||
+    ![s.memory, s.author].every(
+      (m) =>
+        typeof m.enabled === "boolean" &&
+        position(m.position) &&
+        finite(m.depth) &&
+        m.depth >= 0,
+    ) ||
+    !s.lore.every(
+      (l: any) =>
+        text(l.id) &&
+        ["enabled", "constant", "caseSensitive"].every(
+          (k) => typeof l[k] === "boolean",
+        ) &&
+        ["priority", "scanDepth", "budget", "probability"].every((k) =>
+          finite(l[k]),
+        ) &&
+        l.scanDepth >= 0 &&
+        l.budget >= 0 &&
+        l.probability >= 0 &&
+        l.probability <= 100,
+    ) ||
+    !s.segments.every(
+      (x: any) =>
+        x &&
+        text(x.id) &&
+        text(x.before) &&
+        text(x.after) &&
+        finite(x.at) &&
+        (!x.notesBefore || validNotes(x.notesBefore)) &&
+        (!x.notesAfter || validNotes(x.notesAfter)),
+    ) ||
+    !s.snapshots.every(
+      (x: any) =>
+        x &&
+        text(x.id) &&
+        text(x.title) &&
+        text(x.text) &&
+        finite(x.at) &&
+        validNotes(x.notes),
+    ) ||
+    (s.pending !== undefined &&
+      (!Array.isArray(s.pending) ||
+        !s.pending.every(
+          (x: any) =>
+            x &&
+            text(x.noteId) &&
+            text(x.oldContent) &&
+            text(x.newContent) &&
+            s.notes.some((n: any) => n.id === x.noteId),
+        )))
+  )
+    throw new Error(
+      "Invalid project history or context data. Nothing was imported.",
+    );
+  return {
+    ...base,
+    ...s,
+    promptTemplate: s.promptTemplate ?? DEFAULT_PROMPT_TEMPLATE,
+    connection: {
+      kind: s.connection.kind,
+      url: s.connection.url,
+      model: s.connection.model,
+    },
+  };
+}
+export function download(name: string, content: string, type: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
