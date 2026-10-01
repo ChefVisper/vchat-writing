@@ -6,6 +6,7 @@
   --panel: #e0e7ef;
   --card: #f9fbfd;
   --text: #192839;
+  --ai-passage: #355779;
   --muted: #53667b;
   --border: #bcc9d7;
   --accent: #36577f;
@@ -19,6 +20,7 @@
   --panel: #1c2a39;
   --card: #0c161e;
   --text: #e0e7ef;
+  --ai-passage: #b9cfe9;
   --muted: #a3b3c7;
   --border: #354962;
   --accent: #3d5a80;
@@ -280,7 +282,7 @@ a {
   border-radius: 0;
   padding: 0;
   resize: none;
-  overflow-y: auto;
+  overflow: hidden;
   outline: none !important;
   caret-color: #aaccff;
 }
@@ -291,6 +293,9 @@ a {
 }
 .story-editor::placeholder {
   color: var(--muted);
+}
+.story-editor ::selection {
+  background: rgba(139, 190, 255, 0.22);
 }
 .compose-dock {
   display: flex;
@@ -884,7 +889,9 @@ summary svg {
   }
   .document-status,
   .has-panel .document-status {
-    display: none;
+    display: block;
+    flex: 1 0 100%;
+    font-size: 11px;
   }
   .length-control {
     flex: 1;

@@ -4,8 +4,20 @@ vi.mock("../src/storage/stories", () => ({
 }));
 import { useStore } from "../src/store";
 import { newStory, uid } from "../src/types";
+import { storage } from "../src/storage/stories";
 
 describe("editor undo groups", () => {
+  it("coalesces rapid edits into one saved document", async () => {
+    await useStore.getState().flush();
+    vi.mocked(storage.save).mockClear();
+    const s = newStory();
+    useStore.setState({ stories: [s], current: s.id });
+    for (let i = 1; i <= 100; i++) useStore.getState().edit("x".repeat(i));
+    expect(storage.save).not.toHaveBeenCalled();
+    await useStore.getState().flush();
+    expect(storage.save).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(storage.save).mock.calls[0][0].text).toBe("x".repeat(100));
+  });
   it("undoes a typing burst in one step", () => {
     const s = newStory();
     useStore.setState({ stories: [s], current: s.id });

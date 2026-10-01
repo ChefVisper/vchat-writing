@@ -1,17 +1,23 @@
 import { useState } from "react";
-import { DEFAULT_PROMPT_TEMPLATE, type Story } from "../types";
+import {
+  DEFAULT_PROMPT_TEMPLATE,
+  DEFAULT_NOTE_PROMPT,
+  type Story,
+} from "../types";
 import { buildPrompt } from "../context/promptBuilder";
 import { providers } from "../providers";
 export function PromptInspector({
   story,
   lastPrompt,
   patch,
+  assembled,
 }: {
   story: Story;
   lastPrompt: string;
   patch: (value: Partial<Story>) => void;
+  assembled: ReturnType<typeof buildPrompt>;
 }) {
-  const p = buildPrompt(story);
+  const p = assembled;
   const [exact, setExact] = useState<string>("");
   return (
     <>
@@ -44,14 +50,35 @@ export function PromptInspector({
           Add both {"{{context}}"} and {"{{story}}"} before continuing.
         </p>
       )}
+      <details>
+        <summary>Note prompt</summary>
+        <label className="field">
+          <span>Note prompt template</span>
+          <textarea
+            className="prompt-template"
+            value={story.notePromptTemplate ?? DEFAULT_NOTE_PROMPT}
+            onChange={(e) => patch({ notePromptTemplate: e.target.value })}
+            spellCheck={false}
+          />
+        </label>
+        <p className="help">
+          Keep {"{{notes}}"} and {"{{prose}}"}. The model must return an updates
+          JSON object.
+        </p>
+        <button
+          onClick={() => patch({ notePromptTemplate: DEFAULT_NOTE_PROMPT })}
+        >
+          Reset note prompt
+        </button>
+      </details>
 
       <div className="budget">
         <strong>
           {p.total.toLocaleString()} <span>/ {p.budget.toLocaleString()}</span>
         </strong>
         <small>
-          input limit {story.settings.inputTokens.toLocaleString()} · output{" "}
-          {story.settings.maxTokens.toLocaleString()} · max context{" "}
+          writing output {story.settings.maxTokens.toLocaleString()} · note
+          output {story.settings.noteMaxTokens.toLocaleString()} · max context{" "}
           {story.settings.context.toLocaleString()}
         </small>
         <meter value={p.total} max={Math.max(1, p.budget)} />

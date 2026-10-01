@@ -88,6 +88,25 @@ describe("provider protocol", () => {
 });
 
 describe("OpenRouter", () => {
+  it("identifies truncated note output before trying to parse JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          choices: [
+            { message: { content: '{"updates":[' }, finish_reason: "length" },
+          ],
+        }),
+      ),
+    );
+    const r = req();
+    r.key = "test-key";
+    r.purpose = "notes";
+    r.settings.streaming = false;
+    await expect(providers.openrouter.generate(r)).rejects.toThrow(
+      "Note output was cut off",
+    );
+  });
   it("does not silently accept a reasoning-only stream", async () => {
     const body =
       'data: {"choices":[{"delta":{"reasoning":"thinking"}}]}\n\n' +

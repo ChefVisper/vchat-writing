@@ -6,6 +6,7 @@ export interface Request {
   key: string;
   signal: AbortSignal;
   onToken: (text: string) => void;
+  purpose?: "writing" | "notes";
 }
 export interface Provider {
   generate: (r: Request) => Promise<string>;

@@ -19,14 +19,28 @@ interface State {
 }
 let queue = Promise.resolve();
 let initialization: Promise<void> | undefined;
-let queued = 0;
+const pendingSaves = new Map<string, Story>();
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let savingCount = 0;
 let lastEdit:
   { storyId: string; text: string; at: number; kind: string } | undefined;
 function persist(story: Story) {
-  queued++;
+  pendingSaves.set(story.id, story);
   useStore.setState({ saving: true });
+  // Coalesce typing/streaming snapshots. Never queue a full database write per token.
+  if (!saveTimer) saveTimer = setTimeout(flushPending, 500);
+}
+function flushPending() {
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  const stories = [...pendingSaves.values()];
+  pendingSaves.clear();
+  if (!stories.length) return;
+  savingCount++;
   queue = queue
-    .then(() => storage.save(story))
+    .then(async () => {
+      for (const story of stories) await storage.save(story);
+    })
     .then(() => {
       useStore.setState({ saveError: "" });
     })
@@ -36,8 +50,8 @@ function persist(story: Story) {
       });
     })
     .finally(() => {
-      queued--;
-      useStore.setState({ saving: queued > 0 });
+      savingCount--;
+      useStore.setState({ saving: savingCount > 0 || pendingSaves.size > 0 });
     });
 }
 export const useStore = create<State>((set, get) => ({
@@ -144,6 +158,7 @@ export const useStore = create<State>((set, get) => ({
     set({ current });
   },
   remove: async (id) => {
+    flushPending();
     await queue;
     await storage.remove(id);
     set((s) => ({ stories: s.stories.filter((x) => x.id !== id) }));
@@ -151,6 +166,7 @@ export const useStore = create<State>((set, get) => ({
     else if (get().current === id) set({ current: get().stories[0].id });
   },
   flush: async () => {
+    flushPending();
     await queue;
   },
 }));

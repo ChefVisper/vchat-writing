@@ -1,19 +1,23 @@
 import { describe, it, expect } from "vitest";
 import { newStory, newLore, newNote } from "../src/types";
 import { buildPrompt, activateLore } from "../src/context/promptBuilder";
-import { validateUpdates, applyUpdate } from "../src/generation/stateUpdater";
+import {
+  validateUpdates,
+  applyUpdate,
+  buildNotePrompt,
+} from "../src/generation/stateUpdater";
 import { retryBase, cleanContinuation } from "../src/generation/history";
 import { importProject, exportProject } from "../src/storage/transfer";
 describe("context assembly", () => {
-  it("respects an independent input limit", () => {
+  it("uses one max context and ignores legacy input limits", () => {
     const s = newStory(true);
     s.text = "Old paragraph.\n\n".repeat(500) + "The final sentence.";
     s.settings.inputTokens = 400;
-    s.settings.context = 8192;
+    s.settings.context = 1200;
     s.settings.maxTokens = 200;
     const p = buildPrompt(s);
-    expect(p.budget).toBe(400);
-    expect(p.total).toBeLessThanOrEqual(400);
+    expect(p.budget).toBe(1000);
+    expect(p.total).toBeLessThanOrEqual(1000);
     expect(p.trimmed).toBeGreaterThan(0);
     expect(p.prompt).toContain("The final sentence.");
   });
@@ -125,6 +129,33 @@ describe("lore", () => {
   });
 });
 describe("safe note updates", () => {
+  it("extracts complete JSON after reasoning and handles quoted braces", () => {
+    const n = newNote();
+    const raw =
+      "<think>{not JSON}</think>\nNotes:\n```json\n" +
+      JSON.stringify({
+        updates: [{ noteId: n.id, newContent: 'A door marked "{open}".' }],
+      }) +
+      "\n```";
+    expect(validateUpdates(raw, [n])[0].newContent).toBe(
+      'A door marked "{open}".',
+    );
+    expect(() =>
+      validateUpdates(raw.slice(0, raw.indexOf("newContent") + 15), [n]),
+    ).toThrow();
+  });
+  it("reserves Note Output and trims only old prose", () => {
+    const s = newStory(true);
+    s.settings.context = 2000;
+    s.settings.noteMaxTokens = 700;
+    const result = buildNotePrompt(
+      s,
+      "Older prose. ".repeat(10000) + "The final event.",
+    );
+    expect(result.trimmed).toBeGreaterThan(0);
+    expect(result.prompt).toContain(s.notes[0].content.replaceAll("\n", "\\n"));
+    expect(result.prompt).toContain("The final event.");
+  });
   it("rejects locked or uneditable notes", () => {
     const n = { ...newNote(), locked: true };
     expect(() =>
@@ -192,17 +223,20 @@ describe("history and transfer", () => {
     expect(importProject(exportProject(s)).notes).toEqual(s.notes);
     expect(() => importProject('{"story":null}')).toThrow();
   });
-  it("imports older projects without an input-token setting", () => {
+  it("migrates older projects to split output budgets", () => {
     const s = newStory();
     const data = JSON.parse(exportProject(s));
-    delete data.story.settings.inputTokens;
-    expect(importProject(JSON.stringify(data)).settings.inputTokens).toBe(
-      s.settings.context,
-    );
+    data.story.settings.inputTokens = 123;
+    delete data.story.settings.noteMaxTokens;
+    const settings = importProject(JSON.stringify(data)).settings;
+    expect(settings.inputTokens).toBeUndefined();
+    expect(settings.context).toBe(s.settings.context);
+    expect(settings.noteMaxTokens).toBe(2048);
   });
   it("strips extra credential fields from exports", () => {
     const s = newStory();
     Object.assign(s.connection, { apiKey: "secret" });
+    s.noteConnection = { ...s.connection };
     expect(exportProject(s)).not.toContain("secret");
   });
 });

@@ -1,4 +1,4 @@
-import { DEFAULT_PROMPT_TEMPLATE, newStory, type Story } from "../types";
+import { upgradePromptTemplate, newStory, type Story } from "../types";
 export function exportProject(s: Story) {
   return JSON.stringify(
     {
@@ -6,6 +6,13 @@ export function exportProject(s: Story) {
       version: 1,
       story: {
         ...s,
+        noteConnection: s.noteConnection
+          ? {
+              kind: s.noteConnection.kind,
+              url: s.noteConnection.url,
+              model: s.noteConnection.model,
+            }
+          : undefined,
         connection: {
           kind: s.connection.kind,
           url: s.connection.url,
@@ -23,10 +30,10 @@ export function importProject(raw: string): Story {
     throw new Error("This is not a supported Margin project.");
   const s = d.story;
   const base = newStory();
+  s.settings = { ...base.settings, ...s.settings };
+  delete s.settings.inputTokens;
   if (s.promptTemplate !== undefined && typeof s.promptTemplate !== "string")
     throw new Error("Invalid prompt template.");
-  if (s.settings && s.settings.inputTokens === undefined)
-    s.settings.inputTokens = s.settings.context;
   for (const k of ["title", "text", "lastUpdateText"])
     if (typeof s[k] !== "string") throw new Error("Invalid project text.");
   for (const k of ["notes", "lore", "segments", "snapshots", "past", "future"])
@@ -54,9 +61,34 @@ export function importProject(raw: string): Story {
   if (
     s.settings.context <= 0 ||
     s.settings.maxTokens <= 0 ||
-    s.settings.inputTokens <= 0
+    s.settings.noteMaxTokens <= 0
   )
     throw new Error("Invalid token limits.");
+  if (
+    s.notePromptTemplate !== undefined &&
+    typeof s.notePromptTemplate !== "string"
+  )
+    throw new Error("Invalid note prompt.");
+  if (
+    s.noteConnectionMode !== undefined &&
+    !["same", "model", "separate"].includes(s.noteConnectionMode)
+  )
+    throw new Error("Invalid note connection mode.");
+  if (
+    s.noteConnection &&
+    (!["kobold", "openai", "horde", "openrouter"].includes(
+      s.noteConnection.kind,
+    ) ||
+      typeof s.noteConnection.url !== "string" ||
+      typeof s.noteConnection.model !== "string")
+  )
+    throw new Error("Invalid note connection.");
+  if (
+    ![s.settings.thinkingLevel, s.settings.noteThinkingLevel].every((value) =>
+      ["minimal", "low", "medium", "high"].includes(value),
+    )
+  )
+    throw new Error("Invalid thinking level.");
   for (const n of s.notes) {
     if (
       typeof n.id !== "string" ||
@@ -166,7 +198,14 @@ export function importProject(raw: string): Story {
   return {
     ...base,
     ...s,
-    promptTemplate: s.promptTemplate ?? DEFAULT_PROMPT_TEMPLATE,
+    noteConnection: s.noteConnection
+      ? {
+          kind: s.noteConnection.kind,
+          url: s.noteConnection.url,
+          model: s.noteConnection.model,
+        }
+      : undefined,
+    promptTemplate: upgradePromptTemplate(s.promptTemplate),
     connection: {
       kind: s.connection.kind,
       url: s.connection.url,

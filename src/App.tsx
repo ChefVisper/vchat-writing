@@ -34,7 +34,19 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useStore } from "./store";
-import { uid, type Story, type Note, newStory } from "./types";
+import {
+  uid,
+  type Story,
+  type Note,
+  type Connection,
+  newStory,
+  noteConnection,
+} from "./types";
+import {
+  credentialId,
+  readCredentials,
+  saveCredentials,
+} from "./storage/credentials";
 import { storage } from "./storage/stories";
 import { buildPrompt } from "./context/promptBuilder";
 import { providers } from "./providers";
@@ -42,17 +54,21 @@ import { retryBase, cleanContinuation } from "./generation/history";
 import {
   validateUpdates,
   applyUpdate,
-  updaterPrompt,
+  buildNotePrompt,
   type Update,
 } from "./generation/stateUpdater";
 import { exportProject, importProject, download } from "./storage/transfer";
 import { NotesPanel } from "./components/NotesPanel";
 import { ContextPanel, LorebookEditor } from "./components/ContextPanel";
 import {
-  ConnectionPanel,
+  ConnectionsPanel,
   GenerationSettings,
 } from "./components/GenerationSettings";
 import { PromptInspector } from "./components/PromptInspector";
+import {
+  ManuscriptEditor,
+  type ManuscriptHandle,
+} from "./components/ManuscriptEditor";
 const tabs = [
   { id: "notes", label: "Notebook", icon: NotebookPen },
   { id: "context", label: "Memory", icon: Layers },
@@ -73,7 +89,19 @@ export default function App() {
   const [status, setStatus] = useState("Not connected");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [keys, setKeys] = useState<Record<string, string>>(readCredentials);
+  const setCredential = (id: string, value: string) => {
+    const next = { ...keys, [id]: value };
+    if (!value) delete next[id];
+    setKeys(next);
+    try {
+      saveCredentials(next);
+    } catch {
+      setError(
+        "This browser could not save the key. It will last only for this session.",
+      );
+    }
+  };
   const pending = story?.pending || [];
   const setPending = (pending: Update[]) => patch({ pending });
   const [lastPrompt, setLastPrompt] = useState("");
@@ -84,12 +112,16 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const controller = useRef<AbortController | null>(null);
-  const editor = useRef<HTMLTextAreaElement>(null);
+  const activeRequest = useRef<{ connection: Connection; key: string } | null>(
+    null,
+  );
+  const nativeAbort = useRef<Promise<unknown>>(Promise.resolve());
+  const editor = useRef<ManuscriptHandle>(null);
   const followGeneration = useRef(false);
+  const settleScroll = useRef(false);
   const scrollEditorToBottom = () => {
     requestAnimationFrame(() => {
-      if (editor.current)
-        editor.current.scrollTop = editor.current.scrollHeight;
+      editor.current?.scrollToEnd();
     });
   };
   const file = useRef<HTMLInputElement>(null);
@@ -97,9 +129,14 @@ export default function App() {
     useStore
       .getState()
       .stories.find((x) => x.id === useStore.getState().current)!;
-  const apiKey = story ? keys[story.connection.kind] || "" : "";
+  const apiKey = story ? keys[credentialId(story.connection)] || "" : "";
   useEffect(() => {
     void store.init();
+    const flush = () => {
+      void useStore.getState().flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", flush);
     storage
       .pref("appearance-compact")
       .then((p) => {
@@ -110,6 +147,10 @@ export default function App() {
         }
       })
       .catch(() => {});
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", flush);
+    };
   }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
@@ -121,35 +162,140 @@ export default function App() {
   }, [store.current]);
   useLayoutEffect(() => {
     if (!followGeneration.current || !editor.current) return;
-    editor.current.scrollTop = editor.current.scrollHeight;
+    editor.current.scrollToEnd();
     const frame = requestAnimationFrame(() => {
-      if (editor.current)
-        editor.current.scrollTop = editor.current.scrollHeight;
+      editor.current?.scrollToEnd();
     });
     return () => cancelAnimationFrame(frame);
   }, [story?.text]);
   useEffect(() => {
-    if (editor.current) editor.current.scrollTop = editor.current.scrollHeight;
+    editor.current?.scrollToEnd();
   }, [store.current]);
-  const prompt = useMemo(() => (story ? buildPrompt(story) : null), [story]);
+  useLayoutEffect(() => {
+    if (!busy && settleScroll.current) {
+      settleScroll.current = false;
+      scrollEditorToBottom();
+    }
+  }, [busy]);
+  const prompt = useMemo(
+    () => (story && panel === "prompt" && !busy ? buildPrompt(story) : null),
+    [story, panel, busy],
+  );
+  const words = useMemo(
+    () => (story?.text.trim() ? story.text.trim().split(/\s+/).length : 0),
+    [story?.text],
+  );
   function stop() {
     controller.current?.abort();
-    if (story)
-      void providers[story.connection.kind]
-        .abort?.(story.connection, apiKey)
-        .catch(() => {});
+    const active = activeRequest.current;
+    if (active) {
+      nativeAbort.current =
+        providers[active.connection.kind]
+          .abort?.(active.connection, active.key)
+          .catch(() => {}) ?? Promise.resolve();
+    }
   }
-  async function generate(retry = false) {
+  async function updateNotes(force = false) {
+    const now = current();
+    if (
+      !now.notes.some(
+        (n) => n.enabled && n.aiEditable && !n.locked && n.mode !== "off",
+      )
+    ) {
+      setNotice(
+        "No editable notes. Enable AI editing and Review or Auto mode in Notebook.",
+      );
+      return;
+    }
+    setPhase("Updating notes");
+    followGeneration.current = false;
+    const c = new AbortController();
+    controller.current = c;
+    const connection = noteConnection(now);
+    const key =
+      keys[
+        credentialId(
+          connection,
+          now.noteConnectionMode === "separate" ? "notes" : "writing",
+        )
+      ] || "";
+    activeRequest.current = { connection, key };
+    const prose =
+      !force && now.lastUpdateText && now.text.startsWith(now.lastUpdateText)
+        ? now.text.slice(now.lastUpdateText.length)
+        : now.text;
+    if (!prose.trim()) {
+      setNotice("Notes are already up to date; no new prose to check.");
+      return;
+    }
+    const assembled = buildNotePrompt(now, prose);
+    const result = await providers[connection.kind].generate({
+      prompt: assembled.prompt,
+      connection,
+      key,
+      purpose: "notes",
+      signal: c.signal,
+      settings: {
+        ...now.settings,
+        temperature: 0.1,
+        maxTokens: now.settings.noteMaxTokens,
+        thinking: now.settings.noteThinking,
+        thinkingLevel: now.settings.noteThinkingLevel,
+        streaming: false,
+        stops: "",
+      },
+      onToken: () => {},
+    });
+    c.signal.throwIfAborted();
+    const updates = validateUpdates(result, current().notes);
+    let notes = current().notes;
+    for (const update of updates)
+      if (notes.find((n) => n.id === update.noteId)?.mode === "auto")
+        notes = applyUpdate(notes, update);
+    patch({
+      notes,
+      pending: updates.filter(
+        (u) => notes.find((n) => n.id === u.noteId)?.mode === "review",
+      ),
+      lastUpdateText: now.text,
+      segments: current().segments.map((x, i, all) =>
+        i === all.length - 1 && x.after === now.text
+          ? { ...x, notesAfter: notes }
+          : x,
+      ),
+    });
+    setNotice(
+      (updates.length
+        ? `${updates.length} note update(s) ${updates.some((u) => notes.find((n) => n.id === u.noteId)?.mode === "review") ? "ready for review" : "applied"}.`
+        : "Notes checked. No changes needed.") +
+        (assembled.trimmed
+          ? ` ${assembled.trimmed} older prose characters omitted to fit Max Context.`
+          : ""),
+    );
+  }
+  async function generate(
+    retry = false,
+    mode: "continue" | "write" | "note" = "continue",
+  ) {
     if (busy || controller.current || !story) return;
     setError("");
     setNotice("");
-    if (pending.length) {
+    if (pending.length && mode !== "write") {
       setPanel("notes");
-      setError("Accept or reject the pending note changes before continuing.");
+      setError(
+        "Accept or reject the pending note changes before updating notes.",
+      );
       return;
     }
-    let s = structuredClone(current());
+    let s = current();
+    setBusy(true);
+    settleScroll.current = mode !== "note";
+    nativeAbort.current = Promise.resolve();
     try {
+      if (mode === "note") {
+        await updateNotes(true);
+        return;
+      }
       if (retry) {
         const segment = retryBase(s);
         s = {
@@ -166,45 +312,52 @@ export default function App() {
         );
       if (assembled.overflow)
         throw new Error(
-          "Memory and notes exceed the context budget. Review the prompt before continuing.",
+          "Memory and notes exceed Max Context after reserving Writing Output.",
         );
       if (!/^https?:\/\//.test(s.connection.url))
         throw new Error("Enter a valid HTTP server URL in Connection.");
       const c = new AbortController();
       controller.current = c;
-      setBusy(true);
+      activeRequest.current = { connection: s.connection, key: apiKey };
       followGeneration.current = true;
       setPhase("Writing");
       setLastPrompt(assembled.prompt);
-      setPending([]);
-      let raw = "";
-      const original = current().text;
+      const originalStory = current();
+      const original = originalStory.text;
       const before = s.text;
       const notesBefore = structuredClone(s.notes);
       if (retry) patch({ text: before, notes: s.notes, segments: s.segments });
-      const request = {
-        prompt: assembled.prompt,
-        settings: s.settings,
-        connection: s.connection,
-        key: apiKey,
-        signal: c.signal,
-        onToken: (token: string) => {
-          raw += token;
-          patch({ text: before + cleanContinuation(raw) });
-          scrollEditorToBottom();
-        },
+      let raw = "";
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const renderDraft = () => {
+        timer = undefined;
+        patch({ text: before + cleanContinuation(raw) });
+        scrollEditorToBottom();
       };
-      let successful = false;
       try {
-        await providers[s.connection.kind].generate(request);
+        await providers[s.connection.kind].generate({
+          prompt: assembled.prompt,
+          settings: s.settings,
+          connection: s.connection,
+          key: apiKey,
+          purpose: "writing",
+          signal: c.signal,
+          onToken: (token) => {
+            raw += token;
+            if (!timer) timer = setTimeout(renderDraft, 80);
+          },
+        });
         if (!cleanContinuation(raw).trim())
           throw new Error(
-            "The model returned no story text. Increase Output limit in Settings or try another model.",
+            "The model returned no story text. Increase Writing Output or lower Writing Thinking.",
           );
-        successful = true;
+      } catch (e) {
+        if (!c.signal.aborted) throw e;
       } finally {
-        const text = before + cleanContinuation(raw);
-        if (cleanContinuation(raw).trim())
+        clearTimeout(timer);
+        const addition = cleanContinuation(raw);
+        if (addition.trim()) {
+          const text = before + addition;
           patch({
             text,
             past: [...s.past, original].slice(-100),
@@ -214,74 +367,17 @@ export default function App() {
               { id: uid(), before, after: text, at: Date.now(), notesBefore },
             ],
           });
-        else if (retry)
+        } else if (retry) {
           patch({
             text: original,
-            notes: story.notes,
-            segments: story.segments,
+            notes: originalStory.notes,
+            segments: originalStory.segments,
           });
-        else if (raw) patch({ text: original });
+        } else if (raw) patch({ text: original });
+        scrollEditorToBottom();
       }
-      if (
-        successful &&
-        raw &&
-        !c.signal.aborted &&
-        s.notes.some(
-          (n) => n.enabled && n.aiEditable && !n.locked && n.mode !== "off",
-        )
-      ) {
-        setPhase("Updating notes");
-        try {
-          const now = current();
-          const newText = now.text.startsWith(s.lastUpdateText)
-            ? now.text.slice(s.lastUpdateText.length)
-            : before.slice(-3000) + cleanContinuation(raw);
-          const updater = updaterPrompt(now, newText);
-          if (
-            new TextEncoder().encode(updater).length / 3.5 + 1024 >
-            s.settings.context
-          )
-            throw new Error(
-              "Note update skipped: notes and new prose exceed the context window.",
-            );
-          const result = await providers[s.connection.kind].generate({
-            ...request,
-            prompt: updater,
-            settings: {
-              ...s.settings,
-              temperature: 0.1,
-              maxTokens: 1024,
-              streaming: false,
-              stops: "",
-            },
-            onToken: () => {},
-          });
-          const updates = validateUpdates(result, current().notes);
-          let notes = current().notes;
-          for (const u of updates)
-            if (notes.find((n) => n.id === u.noteId)?.mode === "auto")
-              notes = applyUpdate(notes, u);
-          setPending(
-            updates.filter(
-              (u) => notes.find((n) => n.id === u.noteId)?.mode === "review",
-            ),
-          );
-          patch({
-            notes,
-            lastUpdateText: current().text,
-            segments: current().segments.map((x, i, a) =>
-              i === a.length - 1 ? { ...x, notesAfter: notes } : x,
-            ),
-          });
-          if (updates.length)
-            setNotice(
-              `${updates.length} note ${updates.length === 1 ? "update" : "updates"} ${updates.some((u) => notes.find((n) => n.id === u.noteId)?.mode === "review") ? "ready for review" : "applied"}.`,
-            );
-        } catch (e) {
-          if (!c.signal.aborted)
-            setError(e instanceof Error ? e.message : "Note update failed.");
-        }
-      }
+      await nativeAbort.current;
+      if (mode === "continue") await updateNotes();
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError"))
         setError(
@@ -290,11 +386,12 @@ export default function App() {
             : "Generation failed. Check your connection.",
         );
     } finally {
-      scrollEditorToBottom();
       followGeneration.current = false;
       setBusy(false);
       setPhase("");
       controller.current = null;
+      activeRequest.current = null;
+      void store.flush();
     }
   }
   function accept(id?: string) {
@@ -365,19 +462,7 @@ export default function App() {
     }
   }
   function findNext() {
-    if (!editor.current || !story || !query) return;
-    const start = editor.current.selectionEnd;
-    let idx = story.text.toLowerCase().indexOf(query.toLowerCase(), start);
-    if (idx < 0) idx = story.text.toLowerCase().indexOf(query.toLowerCase());
-    if (idx >= 0) {
-      editor.current.focus();
-      editor.current.setSelectionRange(idx, idx + query.length);
-      const lines = story.text.slice(0, idx).split("\n").length;
-      editor.current.scrollTo({
-        top: Math.max(0, lines * font * 1.8 - 160),
-        behavior: "smooth",
-      });
-    } else setNotice("No matches found.");
+    if (query && !editor.current?.find(query)) setNotice("No matches found.");
   }
   if (!store.ready || !story)
     return (
@@ -385,7 +470,6 @@ export default function App() {
         <Feather /> Loading…
       </div>
     );
-  const words = story.text.trim() ? story.text.trim().split(/\s+/).length : 0;
   return (
     <div
       className={`app ${focus ? "focus-mode" : ""} ${panel ? "has-panel" : ""}`}
@@ -680,25 +764,23 @@ export default function App() {
               )}
               <div className="editor-scroll">
                 <div className="paper" style={{ maxWidth: width }}>
-                  <textarea
+                  <ManuscriptEditor
+                    key={story.id}
                     ref={editor}
-                    className="story-editor"
-                    aria-label="Story manuscript"
-                    placeholder="Write here…"
-                    spellCheck
-                    value={story.text}
+                    text={story.text}
                     readOnly={busy}
-                    style={{ fontSize: font }}
-                    onChange={(e) => store.edit(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (
-                        (e.ctrlKey || e.metaKey) &&
-                        e.key.toLowerCase() === "z"
-                      ) {
-                        e.preventDefault();
-                        if (!busy) (e.shiftKey ? store.redo : store.undo)();
-                      }
-                    }}
+                    font={font}
+                    latest={
+                      story.segments.at(-1)?.after === story.text
+                        ? {
+                            from: story.segments.at(-1)!.before.length,
+                            to: story.text.length,
+                          }
+                        : null
+                    }
+                    onChange={store.edit}
+                    undo={store.undo}
+                    redo={store.redo}
                   />
                 </div>
               </div>
@@ -707,6 +789,20 @@ export default function App() {
                   {busy ? phase + "…" : words.toLocaleString() + " words"}
                 </span>
                 <div className="dock-actions">
+                  <button
+                    disabled={busy}
+                    onClick={() => void generate(false, "note")}
+                    title="Update notes only"
+                  >
+                    Note
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => void generate(false, "write")}
+                    title="Write prose only"
+                  >
+                    Write
+                  </button>
                   <button
                     className="retry"
                     disabled={
@@ -722,7 +818,10 @@ export default function App() {
                   </button>
                   {busy ? (
                     <button className="primary" onClick={stop}>
-                      <Square size={15} /> Stop
+                      <Square size={15} />{" "}
+                      {phase === "Updating notes"
+                        ? "Stop notes"
+                        : "Stop writing"}
                     </button>
                   ) : (
                     <button
@@ -770,13 +869,11 @@ export default function App() {
                         <LorebookEditor story={story} patch={patch} />
                       )}
                       {panel === "connection" && (
-                        <ConnectionPanel
+                        <ConnectionsPanel
                           story={story}
                           patch={patch}
-                          apiKey={apiKey}
-                          setKey={(key) =>
-                            setKeys({ ...keys, [story.connection.kind]: key })
-                          }
+                          keys={keys}
+                          setCredential={setCredential}
                           onStatus={setStatus}
                         />
                       )}
@@ -823,11 +920,12 @@ export default function App() {
                           </details>
                         </>
                       )}
-                      {panel === "prompt" && (
+                      {panel === "prompt" && !busy && (
                         <PromptInspector
                           story={story}
                           lastPrompt={lastPrompt}
                           patch={patch}
+                          assembled={prompt!}
                         />
                       )}
                       {panel === "history" && (
@@ -938,8 +1036,10 @@ export default function App() {
                   <div className="panel-bottom">
                     <span>CONTEXT</span>
                     <button onClick={() => setPanel("prompt")}>
-                      ≈ {prompt?.total.toLocaleString()} /{" "}
-                      {story.settings.context.toLocaleString()} tokens{" "}
+                      {prompt
+                        ? "≈ " + prompt.total.toLocaleString()
+                        : "Context"}{" "}
+                      / {story.settings.context.toLocaleString()} tokens{" "}
                       <Code2 size={14} />
                     </button>
                   </div>

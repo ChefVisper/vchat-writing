@@ -1,5 +1,5 @@
 import { openDB } from "idb";
-import type { Story } from "../types";
+import { defaults, upgradePromptTemplate, type Story } from "../types";
 const db = openDB("margin-writing", 1, {
   upgrade(db) {
     db.createObjectStore("stories", { keyPath: "id" });
@@ -7,13 +7,14 @@ const db = openDB("margin-writing", 1, {
   },
 });
 export const storage = {
-  all: async () =>
+  all: async (): Promise<Story[]> =>
     ((await db).getAll("stories") as Promise<Story[]>).then((stories) =>
       stories.map((story) => ({
         ...story,
+        promptTemplate: upgradePromptTemplate(story.promptTemplate),
         settings: {
+          ...defaults,
           ...story.settings,
-          inputTokens: story.settings.inputTokens ?? story.settings.context,
         },
       })),
     ),

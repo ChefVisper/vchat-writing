@@ -1,4 +1,17 @@
 import { base, headers, stream, type Provider } from "./types";
+const modelOptions = new Map<
+  string,
+  {
+    supported_parameters?: string[];
+    reasoning?: { mandatory?: boolean; supported_efforts?: string[] };
+  }
+>();
+function rememberModels(url: string, data: any) {
+  if (Array.isArray(data))
+    for (const model of data)
+      if (typeof model?.id === "string")
+        modelOptions.set(`${url}/${model.id}`, model);
+}
 function safeMessage(value: unknown, key: string) {
   if (typeof value !== "string" || !value.trim()) return "";
   return value.replaceAll(key, "[redacted]").slice(0, 400);
@@ -27,6 +40,22 @@ export const openrouter: Provider = {
     if (!r.connection.model.trim())
       throw new Error("Enter an OpenRouter model ID in Connection.");
     const s = r.settings;
+    const options = modelOptions.get(
+      `${base(r.connection)}/${r.connection.model}`,
+    );
+    if (options?.reasoning?.mandatory && !s.thinking)
+      throw new Error(
+        "This model requires Thinking. Enable it in Settings or select a non-thinking model.",
+      );
+    const supportedEfforts = options?.reasoning?.supported_efforts;
+    if (
+      s.thinking &&
+      supportedEfforts?.length &&
+      !supportedEfforts.includes(s.thinkingLevel)
+    )
+      throw new Error(
+        `This model supports Thinking levels: ${supportedEfforts.join(", ")}. Choose a supported level or another model.`,
+      );
     const response = await fetch(base(r.connection) + "/chat/completions", {
       method: "POST",
       headers: headers(r.key),
@@ -40,6 +69,14 @@ export const openrouter: Provider = {
         seed: s.seed < 0 ? undefined : s.seed,
         stop: s.stops.split("\n").filter(Boolean),
         stream: s.streaming,
+        reasoning: s.thinking
+          ? { enabled: true, effort: s.thinkingLevel }
+          : { enabled: false },
+        response_format:
+          r.purpose === "notes" &&
+          options?.supported_parameters?.includes("response_format")
+            ? { type: "json_object" }
+            : undefined,
       }),
     });
     await checkResponse(response, r.key);
@@ -73,9 +110,15 @@ export const openrouter: Provider = {
         "OpenRouter could not complete the request. Check your model and credits.",
       );
     const text = data.choices?.[0]?.message?.content;
+    if (r.purpose === "notes" && data.choices?.[0]?.finish_reason === "length")
+      throw new Error(
+        "Note output was cut off. Increase Note Output or lower Note Thinking. No notes were changed.",
+      );
     if (typeof text !== "string" || !text.trim())
       throw new Error(
-        "OpenRouter returned no text. Try a larger output limit or another model.",
+        r.purpose === "notes"
+          ? "No note JSON returned. Disable Note Thinking, increase Note Output, or choose a different note model."
+          : "OpenRouter returned no text. Try a larger Writing Output or another model.",
       );
     r.onToken(text);
     return text;
@@ -83,6 +126,7 @@ export const openrouter: Provider = {
   async listModels(c, key) {
     if (!key.trim()) throw new Error("Enter your OpenRouter API key first.");
     const catalog = await openRouterJson(base(c) + "/models", key);
+    rememberModels(base(c), catalog.data);
     if (!Array.isArray(catalog.data))
       throw new Error("OpenRouter returned an invalid model list.");
     return catalog.data
@@ -101,6 +145,7 @@ export const openrouter: Provider = {
       throw new Error("Enter a model ID, such as provider/model-name.");
     await openRouterJson(base(c) + "/key", key);
     const catalog = await openRouterJson(base(c) + "/models", key);
+    rememberModels(base(c), catalog.data);
     const model = catalog.data?.find((m: { id: string }) => m.id === c.model);
     if (!model)
       throw new Error("Model ID not found in the OpenRouter catalog.");

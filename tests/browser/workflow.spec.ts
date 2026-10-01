@@ -1,4 +1,10 @@
 import { test, expect } from "@playwright/test";
+import {
+  editorValue,
+  editorState,
+  expectEditor,
+  setEditorText,
+} from "./editor";
 import { readFile } from "node:fs/promises";
 test("complete continuous-writing workflow with a controlled KoboldCpp provider", async ({
   page,
@@ -75,7 +81,7 @@ test("complete continuous-writing workflow with a controlled KoboldCpp provider"
     .getByRole("textbox", { name: "Keywords (comma-separated)", exact: true })
     .fill("Mira");
   await page.getByRole("button", { name: "Continue", exact: false }).click();
-  await expect(editor).toHaveValue(/fifty dollars/);
+  await expectEditor(page, /fifty dollars/);
   await expect(
     page.getByRole("button", { name: "Continue", exact: false }),
   ).toBeEnabled();
@@ -89,7 +95,7 @@ test("complete continuous-writing workflow with a controlled KoboldCpp provider"
     page.getByRole("textbox", { name: "Current scene content" }),
   ).toHaveValue(/fifty dollars/);
   await page.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(editor).toHaveValue(/table and smiled/);
+  await expectEditor(page, /table and smiled/);
   await expect(
     page.getByRole("button", { name: "Continue", exact: false }),
   ).toBeEnabled();
@@ -101,18 +107,18 @@ test("complete continuous-writing workflow with a controlled KoboldCpp provider"
   expect(storyRequests.at(-1)).toContain("Daniel has placed fifty dollars");
   expect(storyRequests[0]).toContain("Mira lives in Tokyo.");
   expect(storyRequests[0]).toContain("Mira is an architect.");
-  await editor.fill("An edited opening.\n\n" + (await editor.inputValue()));
+  await editor.fill("An edited opening.\n\n" + (await editorValue(page)));
   await expect(
     page.getByRole("button", { name: "Retry", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(editor).not.toHaveValue(/^An edited/);
+  await expectEditor(page, /^An edited/, true);
   await page.getByRole("button", { name: "Redo", exact: true }).click();
-  await expect(editor).toHaveValue(/^An edited/);
+  await expectEditor(page, /^An edited/);
   await page.keyboard.press("Control+s");
   await page.reload();
   await page.getByRole("button", { name: "Notebook", exact: true }).click();
-  await expect(editor).toHaveValue(/^An edited/);
+  await expectEditor(page, /^An edited/);
   await expect(
     page.getByRole("textbox", { name: "Current scene content" }),
   ).toHaveValue(/fifty dollars/);
@@ -157,6 +163,8 @@ test("stopping a pending generation aborts the native backend", async ({
     if (route.request().url().endsWith("/abort")) {
       aborted = true;
       await route.fulfill({ json: { success: true } });
+    } else if (route.request().url().endsWith("/generate")) {
+      await route.fulfill({ json: { results: [{ text: '{"updates":[]}' }] } });
     } else if (route.request().url().endsWith("/generate/stream"))
       await new Promise((r) => setTimeout(r, 1500))
         .then(() =>
@@ -170,14 +178,14 @@ test("stopping a pending generation aborts the native backend", async ({
   await page.goto("/");
   const editor = page.getByRole("textbox", { name: "Story manuscript" });
   await expect(editor).toBeVisible();
-  const before = await editor.inputValue();
+  const before = await editorValue(page);
   await page.getByRole("button", { name: "Continue", exact: false }).click();
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.getByRole("button", { name: "Stop writing", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Continue", exact: false }),
   ).toBeEnabled();
   await expect.poll(() => aborted).toBe(true);
-  await expect(editor).toHaveValue(before);
+  await expectEditor(page, before);
 });
 test("library, snapshots, branches, presets, search and exports", async ({
   page,
@@ -195,7 +203,7 @@ test("library, snapshots, branches, presets, search and exports", async ({
   await editor.fill("Another possibility.");
   await page.getByRole("button", { name: "History", exact: true }).click();
   await page.getByRole("button", { name: "Restore", exact: true }).click();
-  await expect(editor).toHaveValue("A quiet room.\n\nA window opens.");
+  await expectEditor(page, "A quiet room.\n\nA window opens.");
   await page.getByRole("button", { name: "Branch", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Story title" })).toHaveValue(
     "Test manuscript · branch",
@@ -214,10 +222,9 @@ test("library, snapshots, branches, presets, search and exports", async ({
     .getByRole("textbox", { name: "Search within story" })
     .fill("window");
   await page.getByRole("button", { name: "Find next" }).click();
+  const selection = (await editorState(page))!;
   expect(
-    await editor.evaluate((el: HTMLTextAreaElement) =>
-      el.value.slice(el.selectionStart, el.selectionEnd),
-    ),
+    selection.value.slice(selection.selectionStart, selection.selectionEnd),
   ).toBe("window");
   await page.getByRole("button", { name: "History", exact: true }).click();
   const downloadEvent = page.waitForEvent("download");
@@ -233,12 +240,12 @@ test("library, snapshots, branches, presets, search and exports", async ({
   await expect(page.getByRole("textbox", { name: "Story title" })).toHaveValue(
     "Test manuscript · branch",
   );
-  await expect(editor).toHaveValue("A quiet room.\n\nA window opens.");
+  await expectEditor(page, "A quiet room.\n\nA window opens.");
   await page.getByRole("button", { name: "My stories", exact: true }).click();
   await expect(page.getByRole("heading", { name: "My stories" })).toBeVisible();
   await expect(page.locator(".story-card")).toHaveCount(3);
   await page.getByRole("button", { name: "New story", exact: true }).click();
-  await expect(editor).toHaveValue("");
+  await expectEditor(page, "");
 });
 
 test("settings limits and OpenRouter output persist", async ({ page }) => {
@@ -263,11 +270,11 @@ test("settings limits and OpenRouter output persist", async ({ page }) => {
   expect((await editor.boundingBox())!.y).toBeLessThan(115);
   await expect(page.getByText("YOUR STORY, STILL UNFOLDING")).toHaveCount(0);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(
+    page.getByRole("spinbutton", { name: "Input limit (tokens)" }),
+  ).toHaveCount(0);
   await page
-    .getByRole("spinbutton", { name: "Input limit (tokens)" })
-    .fill("1000");
-  await page
-    .getByRole("spinbutton", { name: "Output limit (tokens)" })
+    .getByRole("spinbutton", { name: "Writing Output (tokens)" })
     .fill("333");
   await page
     .getByRole("spinbutton", { name: "Max context (tokens)" })
@@ -275,7 +282,7 @@ test("settings limits and OpenRouter output persist", async ({ page }) => {
   await page.getByRole("button", { name: "AI", exact: true }).click();
   await page.getByLabel("Provider", { exact: true }).selectOption("openrouter");
   await page.getByLabel("Model", { exact: true }).fill("test/writer");
-  await page.getByLabel("API key · this session only").fill("test-key");
+  await page.getByLabel("API key · saved on this device").fill("test-key");
   await page.getByRole("button", { name: "Fetch models" }).click();
   await expect(page.getByLabel("Fetched models")).toHaveValue("test/writer");
   await page.getByRole("button", { name: "Test connection" }).click();
@@ -289,17 +296,15 @@ test("settings limits and OpenRouter output persist", async ({ page }) => {
   await page.getByRole("button", { name: "Close writing tools" }).click();
   await editor.fill("Opening.");
   await page.getByRole("button", { name: "Continue", exact: false }).click();
-  await expect(editor).toHaveValue("Opening. More prose.");
+  await expectEditor(page, "Opening. More prose.");
   expect(sent.max_tokens).toBe(333);
   expect(sent.messages[0].content).toContain("Opening.");
   await page.keyboard.press("Control+s");
   await page.reload();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+
   await expect(
-    page.getByRole("spinbutton", { name: "Input limit (tokens)" }),
-  ).toHaveValue("1000");
-  await expect(
-    page.getByRole("spinbutton", { name: "Output limit (tokens)" }),
+    page.getByRole("spinbutton", { name: "Writing Output (tokens)" }),
   ).toHaveValue("333");
   await expect(
     page.getByRole("spinbutton", { name: "Max context (tokens)" }),
@@ -308,7 +313,9 @@ test("settings limits and OpenRouter output persist", async ({ page }) => {
   await expect(page.getByLabel("Provider", { exact: true })).toHaveValue(
     "openrouter",
   );
-  await expect(page.getByLabel("API key · this session only")).toHaveValue("");
+  await expect(page.getByLabel("API key · saved on this device")).toHaveValue(
+    "test-key",
+  );
 });
 
 test("reasoning-only OpenRouter output explains why no prose appeared", async ({
@@ -328,14 +335,14 @@ test("reasoning-only OpenRouter output explains why no prose appeared", async ({
   await page.goto("/");
   const editor = page.getByRole("textbox", { name: "Story manuscript" });
   await expect(editor).toBeVisible();
-  const before = await editor.inputValue();
+  const before = await editorValue(page);
   await page.getByRole("button", { name: "AI", exact: true }).click();
   await page.getByLabel("Provider", { exact: true }).selectOption("openrouter");
   await page.getByLabel("Model", { exact: true }).fill("test/writer");
-  await page.getByLabel("API key · this session only").fill("test-key");
+  await page.getByLabel("API key · saved on this device").fill("test-key");
   await page.getByRole("button", { name: "Continue", exact: false }).click();
   await expect(page.getByRole("alert")).toContainText("Increase Output limit");
-  await expect(editor).toHaveValue(before);
+  await expectEditor(page, before);
 });
 
 test("long manuscript scrolls, follows new prose, and uses editable prompt", async ({
@@ -356,27 +363,33 @@ test("long manuscript scrolls, follows new prose, and uses editable prompt", asy
   const editor = page.getByRole("textbox", { name: "Story manuscript" });
   await editor.fill("A paragraph of manuscript text.\n\n".repeat(100));
   await expect
-    .poll(() => editor.evaluate((el) => el.scrollHeight > el.clientHeight))
+    .poll(() =>
+      page
+        .locator(".cm-scroller")
+        .evaluate((el) => el.scrollHeight > el.clientHeight),
+    )
     .toBe(true);
-  await editor.evaluate((el) => (el.scrollTop = 0));
+  await page.locator(".cm-scroller").evaluate((el) => (el.scrollTop = 0));
   await editor.hover();
   await page.mouse.wheel(0, 460);
   await expect
-    .poll(() => editor.evaluate((el) => el.scrollTop))
+    .poll(() => page.locator(".cm-scroller").evaluate((el) => el.scrollTop))
     .toBeGreaterThan(0);
   await page.getByRole("button", { name: "View prompt", exact: true }).click();
   const template = page.getByRole("textbox", { name: "Prompt template" });
   await template.fill("Write spare prose.\n\n{{context}}\n\n{{story}}");
   await page.getByRole("button", { name: "Close writing tools" }).click();
-  await editor.evaluate((el) => (el.scrollTop = 0));
+  await page.locator(".cm-scroller").evaluate((el) => (el.scrollTop = 0));
   await page.getByRole("button", { name: "Continue", exact: false }).click();
-  await expect(editor).toHaveValue(/The next sentence\.$/);
+  await expectEditor(page, /The next sentence\.$/);
   expect(sentPrompt).toContain("Write spare prose.");
   await expect
     .poll(() =>
-      editor.evaluate((el) =>
-        Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop),
-      ),
+      page
+        .locator(".cm-scroller")
+        .evaluate((el) =>
+          Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop),
+        ),
     )
     .toBeLessThan(3);
   await page.reload();

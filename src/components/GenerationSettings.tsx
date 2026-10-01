@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import type { Story, Settings, Connection } from "../types";
+import {
+  noteConnection,
+  type Story,
+  type Settings,
+  type Connection,
+} from "../types";
+import { credentialId } from "../storage/credentials";
 import { Field, Toggle } from "./Fields";
 import { providers } from "../providers";
 import { storage } from "../storage/stories";
@@ -9,12 +15,14 @@ export function ConnectionPanel({
   apiKey,
   setKey,
   onStatus,
+  modelOnly = false,
 }: {
   story: Story;
   patch: (p: Partial<Story>) => void;
   apiKey: string;
   setKey: (s: string) => void;
   onStatus: (s: string) => void;
+  modelOnly?: boolean;
 }) {
   const [testing, setTesting] = useState(false);
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -27,6 +35,7 @@ export function ConnectionPanel({
 
       <Field label="Provider">
         <select
+          disabled={modelOnly}
           value={c.kind}
           onChange={(e) => {
             const kind = e.target.value as Connection["kind"];
@@ -44,7 +53,6 @@ export function ConnectionPanel({
                 model: "",
               },
             });
-            setKey("");
             setModels([]);
             setModelError("");
             onStatus("Not connected");
@@ -63,6 +71,7 @@ export function ConnectionPanel({
       >
         <input
           type="url"
+          disabled={modelOnly}
           value={c.url}
           onChange={(e) => {
             patch({ connection: { ...c, url: e.target.value } });
@@ -85,8 +94,8 @@ export function ConnectionPanel({
           }
         />
       </Field>
-      {c.kind !== "kobold" && (
-        <Field label="API key · this session only">
+      {c.kind !== "kobold" && !modelOnly && (
+        <Field label="API key · saved on this device">
           <input
             type="password"
             autoComplete="off"
@@ -94,6 +103,9 @@ export function ConnectionPanel({
             onChange={(e) => setKey(e.target.value)}
           />
         </Field>
+      )}
+      {!modelOnly && apiKey && (
+        <button onClick={() => setKey("")}>Forget API key</button>
       )}
       <div className="model-fetch">
         <button
@@ -179,8 +191,90 @@ export function ConnectionPanel({
             : "Requests go directly from your browser to this endpoint. Your server must allow this app’s origin through CORS."}
       </p>
       <p className="help">
-        API keys remain in memory and are excluded from saved projects.
+        Keys are saved in this browser's local storage, separately from stories.
+        They are excluded from project exports and source files. Clearing
+        browser data removes them.
       </p>
+    </>
+  );
+}
+export function ConnectionsPanel({
+  story,
+  patch,
+  keys,
+  setCredential,
+  onStatus,
+}: {
+  story: Story;
+  patch: (p: Partial<Story>) => void;
+  keys: Record<string, string>;
+  setCredential: (id: string, value: string) => void;
+  onStatus: (value: string) => void;
+}) {
+  const [target, setTarget] = useState("writing");
+  const isNote = target === "notes";
+  const mode = story.noteConnectionMode ?? "same";
+  const c = isNote ? noteConnection(story) : story.connection;
+  const id = credentialId(
+    c,
+    isNote && mode === "separate" ? "notes" : "writing",
+  );
+  return (
+    <>
+      <div className="row">
+        <button
+          className={isNote ? "" : "primary"}
+          onClick={() => setTarget("writing")}
+        >
+          Writing connection
+        </button>
+        <button
+          className={isNote ? "primary" : ""}
+          onClick={() => setTarget("notes")}
+        >
+          Notes connection
+        </button>
+      </div>
+      {isNote && (
+        <Field label="Note connection mode">
+          <select
+            value={mode}
+            onChange={(e) =>
+              patch({
+                noteConnectionMode: e.target
+                  .value as Story["noteConnectionMode"],
+                noteConnection: story.noteConnection ?? { ...story.connection },
+              })
+            }
+          >
+            <option value="same">Same API and model as writing</option>
+            <option value="model">Same API and key, different model</option>
+            <option value="separate">Separate API, key and model</option>
+          </select>
+        </Field>
+      )}
+      {isNote && mode === "same" ? (
+        <p className="help">
+          Notes use the writing connection and its saved key.
+        </p>
+      ) : (
+        <ConnectionPanel
+          key={`${target}:${c.kind}:${mode}`}
+          story={{ ...story, connection: c }}
+          patch={(p) =>
+            p.connection &&
+            patch(
+              isNote
+                ? { noteConnection: p.connection }
+                : { connection: p.connection },
+            )
+          }
+          apiKey={keys[id] || ""}
+          setKey={(value) => setCredential(id, value)}
+          onStatus={onStatus}
+          modelOnly={isNote && mode === "model"}
+        />
+      )}
     </>
   );
 }
@@ -203,8 +297,8 @@ export function GenerationSettings({
   }, []);
   const s = story.settings;
   const limits: [keyof Settings, string, number, number][] = [
-    ["inputTokens", "Input limit (tokens)", 1, 262144],
-    ["maxTokens", "Output limit (tokens)", 1, 8192],
+    ["maxTokens", "Writing Output (tokens)", 1, 131072],
+    ["noteMaxTokens", "Note Output (tokens)", 1, 131072],
     ["context", "Max context (tokens)", 256, 262144],
   ];
   const native = ["kobold", "horde"].includes(story.connection.kind);
@@ -250,8 +344,9 @@ export function GenerationSettings({
           </Field>
         ))}
         <p className="help">
-          Input is capped by max context minus output. Older story text is
-          trimmed first.
+          Max Context includes input and output. Each request reserves its own
+          output budget; older prose is trimmed first. Thinking tokens also use
+          the output budget.
         </p>
       </div>
 
@@ -265,7 +360,6 @@ export function GenerationSettings({
                 settings: {
                   ...s,
                   ...p.settings,
-                  inputTokens: p.settings.inputTokens ?? s.inputTokens,
                 },
               });
           }}
@@ -300,6 +394,47 @@ export function GenerationSettings({
           Save
         </button>
       </div>
+      <h3>Thinking</h3>
+      {([false, true] as const).map((isNote) => {
+        const enabled = isNote ? "noteThinking" : "thinking";
+        const level = isNote ? "noteThinkingLevel" : "thinkingLevel";
+        return (
+          <div key={enabled}>
+            <Toggle
+              label={isNote ? "Note Thinking" : "Writing Thinking"}
+              value={s[enabled]}
+              onChange={(value) =>
+                patch({ settings: { ...s, [enabled]: value } })
+              }
+            />
+            {s[enabled] && (
+              <Field
+                label={
+                  isNote ? "Note Thinking level" : "Writing Thinking level"
+                }
+              >
+                <select
+                  value={s[level]}
+                  onChange={(e) =>
+                    patch({ settings: { ...s, [level]: e.target.value } })
+                  }
+                >
+                  {["minimal", "low", "medium", "high"].map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </div>
+        );
+      })}
+      <p className="help">
+        Thinking controls are sent to OpenRouter. Support depends on the model;
+        models with mandatory reasoning cannot turn it off. Native completion
+        providers use their server's thinking settings.
+      </p>
       <details open className="settings-details">
         <summary>Generation settings</summary>
         {fields.map(([key, label, min, max, step]) => (

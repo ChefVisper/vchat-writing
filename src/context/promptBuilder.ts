@@ -7,13 +7,18 @@ const keys = (s: string) =>
     .map((x) => x.trim())
     .filter(Boolean);
 export function activateLore(story: Story) {
+  if (!story.lore.length) return [];
   let budget = story.loreBudget;
+  let storyHash = 0;
+  for (const c of story.text)
+    storyHash = (Math.imul(31, storyHash) + c.charCodeAt(0)) | 0;
+  const paragraphs = story.text.split("\n\n");
   return [...story.lore]
     .sort((a, b) => b.priority - a.priority)
     .map((entry) => {
       const recent =
         entry.scanDepth > 0
-          ? story.text.split("\n\n").slice(-entry.scanDepth).join("\n\n")
+          ? paragraphs.slice(-entry.scanDepth).join("\n\n")
           : "";
       const has = (key: string) =>
         entry.caseSensitive
@@ -37,9 +42,9 @@ export function activateLore(story: Story) {
         active = false;
         reason = "Secondary keyword missing";
       } // Stable roll keeps preview identical to generation.
-      const hash = [...(story.text + entry.id)].reduce(
+      const hash = [...entry.id].reduce(
         (h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0,
-        0,
+        storyHash,
       );
       if (active && Math.abs(hash) % 100 >= entry.probability) {
         active = false;
@@ -131,13 +136,7 @@ export function buildPrompt(story: Story) {
   let text = story.text;
   let sections = assemble(text);
   const total = () => estimate(sections.map((x) => x.text).join("\n\n"));
-  const budget = Math.max(
-    0,
-    Math.min(
-      story.settings.inputTokens ?? story.settings.context,
-      story.settings.context - story.settings.maxTokens,
-    ),
-  );
+  const budget = Math.max(0, story.settings.context - story.settings.maxTokens);
   while (total() > budget && text.length) {
     const cut = Math.max(1, Math.ceil((total() - budget) * 3.5));
     text = text.slice(cut);
