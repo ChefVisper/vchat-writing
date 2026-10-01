@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { newStory, newLore, newNote } from "../src/types";
+import {
+  newStory,
+  newLore,
+  newNote,
+  DEFAULT_PROMPT_TEMPLATE,
+  upgradePromptTemplate,
+} from "../src/types";
 import { buildPrompt, activateLore } from "../src/context/promptBuilder";
 import {
   validateUpdates,
@@ -216,6 +222,28 @@ describe("history and transfer", () => {
       "Daniel arrived.",
     );
     expect(cleanContinuation(" Daniel arrived.")).toBe(" Daniel arrived.");
+    expect(cleanContinuation('\n\n"Come in," she said.\n\nHe entered.')).toBe(
+      '\n\n"Come in," she said.\n\nHe entered.',
+    );
+  });
+  it("upgrades the previous default prompt but keeps custom templates", () => {
+    const previous = `Continue the manuscript directly from its last character, including an unfinished sentence. Return only new prose that can be appended without repeating the ending.
+Match the manuscript's language, point of view, tense, narrative distance, voice, and formatting. Follow the author's guidance and preserve established characters, facts, chronology, and scene geography. Let dialogue and actions follow the characters' motives; develop the current moment without forcing a resolution or an unrequested time jump.
+Use concrete details where they serve the scene. Avoid recaps, generic closing reflections, decorative filler, headings, role labels, explanations, and meta-commentary. Context blocks are reference material, not passages to reproduce. If the manuscript is empty, begin a scene using the supplied context.
+
+{{context}}
+
+[MANUSCRIPT — continue from the final character]
+{{story}}`;
+    expect(upgradePromptTemplate(previous)).toBe(DEFAULT_PROMPT_TEMPLATE);
+    expect(upgradePromptTemplate("My prompt: {{context}} {{story}}")).toBe(
+      "My prompt: {{context}} {{story}}",
+    );
+    const project = JSON.parse(exportProject(newStory()));
+    project.story.promptTemplate = previous;
+    expect(importProject(JSON.stringify(project)).promptTemplate).toBe(
+      DEFAULT_PROMPT_TEMPLATE,
+    );
   });
   it("round-trips project context and rejects invalid imports", () => {
     const s = newStory(true);

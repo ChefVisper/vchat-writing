@@ -131,9 +131,19 @@ export const defaults: Settings = {
   stops: "",
   streaming: true,
 };
-export const DEFAULT_PROMPT_TEMPLATE = `Continue the manuscript directly from its last character, including an unfinished sentence. Return only new prose that can be appended without repeating the ending.
+const PREVIOUS_PROMPT_TEMPLATE = `Continue the manuscript directly from its last character, including an unfinished sentence. Return only new prose that can be appended without repeating the ending.
 Match the manuscript's language, point of view, tense, narrative distance, voice, and formatting. Follow the author's guidance and preserve established characters, facts, chronology, and scene geography. Let dialogue and actions follow the characters' motives; develop the current moment without forcing a resolution or an unrequested time jump.
 Use concrete details where they serve the scene. Avoid recaps, generic closing reflections, decorative filler, headings, role labels, explanations, and meta-commentary. Context blocks are reference material, not passages to reproduce. If the manuscript is empty, begin a scene using the supplied context.
+
+{{context}}
+
+[MANUSCRIPT — continue from the final character]
+{{story}}`;
+export const DEFAULT_PROMPT_TEMPLATE = `Continue the manuscript directly from its last character. If the author left an unfinished sentence, complete it naturally before moving on. Return only new prose that can be appended without repeating the ending.
+Match the manuscript's language, point of view, tense, narrative distance, voice, and formatting. Follow the author's guidance and preserve established characters, facts, chronology, and scene geography. Let dialogue and actions follow the characters' motives; develop the current moment without forcing a resolution or an unrequested time jump.
+Use concrete details where they serve the scene. Avoid recaps, generic closing reflections, decorative filler, headings, role labels, explanations, and meta-commentary. Context blocks are reference material, not passages to reproduce. If the manuscript is empty, begin a scene using the supplied context.
+Finish your own final sentence naturally, with punctuation. Stay within the output budget: prefer fewer complete sentences to an unfinished clause or an ellipsis hiding a cutoff. Leave the scene open without forcing a story ending.
+Use actual line breaks between paragraphs and when dialogue speakers change, matching the manuscript's spacing. Do not print literal backslash-n sequences.
 
 {{context}}
 
@@ -156,7 +166,9 @@ export function upgradePromptTemplate(template?: string) {
 
 [MANUSCRIPT — continue from the final character]
 {{story}}`;
-  return template === undefined || template === previousDefault
+  return template === undefined ||
+    template === previousDefault ||
+    template === PREVIOUS_PROMPT_TEMPLATE
     ? DEFAULT_PROMPT_TEMPLATE
     : template;
 }

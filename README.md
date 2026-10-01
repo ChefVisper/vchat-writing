@@ -141,6 +141,8 @@ The manuscript editor scrolls within its own writing area and follows new AI pro
 
 The CodeMirror editor renders the visible portion of the manuscript. Streaming UI updates are batched, database writes are coalesced, and prompt previews are computed only while open. This avoids rendering the whole document or saving a full project per token.
 
+Enter and Shift+Enter insert line breaks, including Android soft-keyboard Enter events. AI paragraph breaks are preserved in the manuscript. The default writing prompt asks the model to finish an author's incomplete sentence, use paragraph breaks, and end its own passage on a complete sentence. Existing unmodified defaults are upgraded; custom prompts remain unchanged. A provider's hard output limit can still cut a sentence short, so increase Writing Output if this persists.
+
 Note parsing accepts complete JSON wrapped in Markdown or explanatory text and ignores explicit thinking blocks. It still rejects unknown/locked note IDs, duplicate operations and incomplete content. OpenRouter JSON mode is used when the fetched model catalog advertises support. This improves compatibility but cannot guarantee a model's factual accuracy. Real provider behavior should still be reviewed.
 
 To update an existing Termux installation, stop the server with Ctrl+C, then:

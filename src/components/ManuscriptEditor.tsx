@@ -13,10 +13,16 @@ import {
 import {
   Decoration,
   EditorView,
+  keymap,
   placeholder,
   type DecorationSet,
 } from "@codemirror/view";
+import { insertNewline } from "@codemirror/commands";
 export { EditorView };
+
+function newline(view: EditorView) {
+  return view.state.readOnly || insertNewline(view);
+}
 
 const highlight = StateEffect.define<{ from: number; to: number } | null>();
 const highlightField = StateField.define<DecorationSet>({
@@ -99,6 +105,7 @@ export const ManuscriptEditor = forwardRef<ManuscriptHandle, Props>(
           doc: current.current.text,
           extensions: [
             EditorView.lineWrapping,
+            keymap.of([{ key: "Enter", run: newline, shift: newline }]),
             placeholder("Write here…"),
             highlightField,
             readOnly.current.of(
@@ -108,6 +115,7 @@ export const ManuscriptEditor = forwardRef<ManuscriptHandle, Props>(
               "aria-label": "Story manuscript",
               "aria-multiline": "true",
               spellcheck: "true",
+              enterkeyhint: "enter",
             }),
             EditorView.updateListener.of((update) => {
               if (update.docChanged && !syncing.current)
