@@ -6,6 +6,7 @@ import {
 } from "../types";
 import { buildPrompt } from "../context/promptBuilder";
 import { providers } from "../providers";
+import { taskInstructions } from "../providers/types";
 export function PromptInspector({
   story,
   lastPrompt,
@@ -49,6 +50,16 @@ export function PromptInspector({
         <p className="error" role="alert">
           Add both {"{{context}}"} and {"{{story}}"} before continuing.
         </p>
+      )}
+      {story.connection.kind === "openrouter" && (
+        <details>
+          <summary>OpenRouter system instruction</summary>
+          <p className="help">
+            This output contract is sent before your editable writing prompt.
+            Its estimated tokens are reserved from Max Context.
+          </p>
+          <pre>{taskInstructions.writing}</pre>
+        </details>
       )}
       <details>
         <summary>Note prompt</summary>

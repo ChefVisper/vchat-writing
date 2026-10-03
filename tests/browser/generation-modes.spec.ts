@@ -28,7 +28,10 @@ test("independent models, output budgets, thinking and local credentials", async
     }
     notes.push(request);
     const noteId = JSON.parse(
-      body.messages[0].content.split("NOTES:\n")[1].split("\n\nNEW PROSE:")[0],
+      body.messages
+        .find((m: any) => m.role === "user")
+        .content.split("NOTES:\n")[1]
+        .split("\n\nNEW PROSE:")[0],
     )[0].noteId;
     const json = JSON.stringify({
       updates: [
@@ -148,7 +151,7 @@ test("stopping a live stream keeps partial prose and submits it to notes", async
     req.on("end", () => {
       if (req.url?.endsWith("/generate/stream")) {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
-        res.write('data: {"token":" A partial passage."}\n\n');
+        res.write('data: {"token":" A partial passage without an ending"}\n\n');
         return;
       }
       res.setHeader("Content-Type", "application/json");
@@ -164,18 +167,20 @@ test("stopping a live stream keeps partial prose and submits it to notes", async
     await page.goto("/");
     await page.getByRole("button", { name: "AI", exact: true }).click();
     await page.getByLabel("Server URL").fill(`http://127.0.0.1:${port}`);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByLabel("Trim incomplete sentences", { exact: true }).check();
     await page.getByRole("button", { name: "Close writing tools" }).click();
     const before = await editorValue(page);
     await page.getByRole("button", { name: "Continue", exact: false }).click();
-    await expectEditor(page, before + " A partial passage.");
+    await expectEditor(page, before + " A partial passage without an ending");
     await page
       .getByRole("button", { name: "Stop writing", exact: true })
       .click();
     await expect(
       page.getByRole("button", { name: "Continue", exact: false }),
     ).toBeEnabled();
-    expect(notePrompt).toContain("A partial passage.");
-    await expectEditor(page, before + " A partial passage.");
+    expect(notePrompt).toContain("A partial passage without an ending");
+    await expectEditor(page, before + " A partial passage without an ending");
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expectEditor(page, before);
   } finally {

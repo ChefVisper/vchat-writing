@@ -206,7 +206,7 @@ test("library, snapshots, branches, presets, search and exports", async ({
   await expectEditor(page, "A quiet room.\n\nA window opens.");
   await page.getByRole("button", { name: "Branch", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Story title" })).toHaveValue(
-    "Test manuscript · branch",
+    "Test manuscript · Branch 1",
   );
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Temperature", { exact: true }).fill("0.65");
@@ -230,7 +230,7 @@ test("library, snapshots, branches, presets, search and exports", async ({
   const downloadEvent = page.waitForEvent("download");
   await page.getByRole("button", { name: "Full project" }).click();
   const download = await downloadEvent;
-  expect(download.suggestedFilename()).toBe("Test manuscript · branch.json");
+  expect(download.suggestedFilename()).toBe("Test manuscript · Branch 1.json");
   const path = await download.path();
   await page.locator("input[type=file]").setInputFiles({
     name: download.suggestedFilename(),
@@ -238,7 +238,7 @@ test("library, snapshots, branches, presets, search and exports", async ({
     buffer: await readFile(path!),
   });
   await expect(page.getByRole("textbox", { name: "Story title" })).toHaveValue(
-    "Test manuscript · branch",
+    "Test manuscript · Branch 1",
   );
   await expectEditor(page, "A quiet room.\n\nA window opens.");
   await page.getByRole("button", { name: "My stories", exact: true }).click();
@@ -298,7 +298,9 @@ test("settings limits and OpenRouter output persist", async ({ page }) => {
   await page.getByRole("button", { name: "Continue", exact: false }).click();
   await expectEditor(page, "Opening. More prose.");
   expect(sent.max_tokens).toBe(333);
-  expect(sent.messages[0].content).toContain("Opening.");
+  expect(sent.messages.find((m: any) => m.role === "user").content).toContain(
+    "Opening.",
+  );
   await page.keyboard.press("Control+s");
   await page.reload();
   await page.getByRole("button", { name: "Settings", exact: true }).click();

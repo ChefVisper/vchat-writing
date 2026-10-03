@@ -10,6 +10,7 @@ interface State {
   init: () => Promise<void>;
   patch: (patch: Partial<Story>) => void;
   edit: (text: string) => void;
+  replace: (text: string) => void;
   undo: () => void;
   redo: () => void;
   add: (story?: Story) => void;
@@ -113,6 +114,11 @@ export const useStore = create<State>((set, get) => ({
     });
     lastEdit = { storyId: s.id, text, at: Date.now(), kind };
   },
+  replace: (text) => {
+    lastEdit = undefined;
+    get().edit(text);
+    lastEdit = undefined;
+  },
   undo: () => {
     lastEdit = undefined;
     const s = get().stories.find((x) => x.id === get().current)!;
@@ -148,7 +154,7 @@ export const useStore = create<State>((set, get) => ({
   },
   add: (story) => {
     const s = story
-      ? { ...structuredClone(story), id: uid(), modified: Date.now() }
+      ? { ...story, id: uid(), modified: Date.now() }
       : newStory();
     set((x) => ({ stories: [...x.stories, s], current: s.id }));
     persist(s);

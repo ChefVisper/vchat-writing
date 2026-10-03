@@ -50,7 +50,13 @@ import {
 import { storage } from "./storage/stories";
 import { buildPrompt } from "./context/promptBuilder";
 import { providers } from "./providers";
-import { retryBase, cleanContinuation } from "./generation/history";
+import {
+  retryBase,
+  cleanContinuation,
+  trimIncomplete,
+  branchTitle,
+} from "./generation/history";
+import { buildRewritePrompt } from "./generation/rewrite";
 import {
   validateUpdates,
   applyUpdate,
@@ -89,6 +95,18 @@ export default function App() {
   const [status, setStatus] = useState("Not connected");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [rewrite, setRewrite] = useState<{
+    id: string;
+    from: number;
+    to: number;
+    text: string;
+    original: string;
+  } | null>(null);
+  const [rewriteInstruction, setRewriteInstruction] = useState(
+    "Improve clarity and flow while preserving meaning, tone and events.",
+  );
+  const [rewriteDraft, setRewriteDraft] = useState("");
+  const [countText, setCountText] = useState("");
   const [keys, setKeys] = useState<Record<string, string>>(readCredentials);
   const setCredential = (id: string, value: string) => {
     const next = { ...keys, [id]: value };
@@ -157,6 +175,8 @@ export default function App() {
   }, [dark]);
   useEffect(() => {
     setLastPrompt("");
+    setRewrite(null);
+    setRewriteDraft("");
     setError("");
     setStatus("Not connected");
   }, [store.current]);
@@ -181,10 +201,108 @@ export default function App() {
     () => (story && panel === "prompt" && !busy ? buildPrompt(story) : null),
     [story, panel, busy],
   );
+  useEffect(() => {
+    const timer = setTimeout(() => setCountText(story?.text ?? ""), 250);
+    return () => clearTimeout(timer);
+  }, [story?.text]);
   const words = useMemo(
-    () => (story?.text.trim() ? story.text.trim().split(/\s+/).length : 0),
-    [story?.text],
+    () => (countText.trim() ? countText.trim().split(/\s+/).length : 0),
+    [countText],
   );
+  function openRewrite() {
+    const selection = editor.current?.selection();
+    if (!selection) {
+      setNotice("Select the passage you want to rewrite first.");
+      return;
+    }
+    setRewrite({ ...selection, id: current().id, original: current().text });
+    setRewriteDraft("");
+    setError("");
+    setPanel("rewrite");
+  }
+  async function generateRewrite() {
+    if (busy || controller.current || !rewrite) return;
+    const s = current();
+    if (s.id !== rewrite.id || s.text !== rewrite.original) {
+      setError("The manuscript changed. Select the passage again.");
+      return;
+    }
+    setError("");
+    setNotice("");
+    setRewriteDraft("");
+    setBusy(true);
+    setPhase("Rewriting");
+    const c = new AbortController();
+    controller.current = c;
+    activeRequest.current = { connection: s.connection, key: apiKey };
+    nativeAbort.current = Promise.resolve();
+    let raw = "",
+      timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const prompt = buildRewritePrompt(
+        s,
+        rewrite.from,
+        rewrite.to,
+        rewriteInstruction,
+      );
+      await providers[s.connection.kind].generate({
+        prompt,
+        connection: s.connection,
+        key: apiKey,
+        purpose: "rewrite",
+        settings: { ...s.settings, stops: "" },
+        signal: c.signal,
+        onToken: (token) => {
+          raw += token;
+          if (!timer)
+            timer = setTimeout(() => {
+              timer = undefined;
+              setRewriteDraft(cleanContinuation(raw));
+            }, 80);
+        },
+      });
+      if (!raw.trim())
+        throw new Error(
+          "No replacement text returned. Try a larger Writing Output.",
+        );
+    } catch (e) {
+      if (!c.signal.aborted)
+        setError(e instanceof Error ? e.message : "Rewrite failed.");
+    } finally {
+      clearTimeout(timer);
+      const clean = cleanContinuation(raw);
+      setRewriteDraft(
+        s.settings.trimIncomplete && !c.signal.aborted
+          ? trimIncomplete("", clean)
+          : clean,
+      );
+      await nativeAbort.current;
+      controller.current = null;
+      activeRequest.current = null;
+      setBusy(false);
+      setPhase("");
+    }
+  }
+  function applyRewrite() {
+    if (!rewrite || !rewriteDraft.trim()) return;
+    const s = current();
+    if (s.id !== rewrite.id || s.text !== rewrite.original) {
+      setError(
+        "The manuscript changed. Select the passage again; no text was replaced.",
+      );
+      return;
+    }
+    store.replace(
+      s.text.slice(0, rewrite.from) + rewriteDraft + s.text.slice(rewrite.to),
+    );
+    setRewrite(null);
+    setRewriteDraft("");
+    setPanel(null);
+    setNotice(
+      "Passage replaced. Undo restores it in one step. Use Note to recheck continuity notes.",
+    );
+    void store.flush();
+  }
   function stop() {
     controller.current?.abort();
     const active = activeRequest.current;
@@ -355,7 +473,17 @@ export default function App() {
         if (!c.signal.aborted) throw e;
       } finally {
         clearTimeout(timer);
-        const addition = cleanContinuation(raw);
+        const clean = cleanContinuation(raw);
+        const addition =
+          s.settings.trimIncomplete && !c.signal.aborted
+            ? trimIncomplete(before, clean)
+            : clean;
+        if (addition.length < clean.length)
+          setNotice(
+            addition.trim()
+              ? "Incomplete final sentence trimmed."
+              : "No complete sentence returned; the manuscript was kept unchanged. Increase Writing Output or disable trimming.",
+          );
         if (addition.trim()) {
           const text = before + addition;
           patch({
@@ -424,7 +552,11 @@ export default function App() {
   }
   function branch() {
     if (!story) return;
-    store.add({ ...story, parent: story.id, title: story.title + " · branch" });
+    store.add({
+      ...story,
+      parent: story.id,
+      title: branchTitle(story, store.stories),
+    });
     setNotice("Branch created. Your original is in the library.");
   }
   useEffect(() => {
@@ -664,6 +796,15 @@ export default function App() {
             <main className="manuscript">
               <div className="editor-toolbar">
                 <div className="row">
+                  <button
+                    className="icon"
+                    aria-label="Rewrite selection"
+                    title="Select a passage, then rewrite it"
+                    disabled={busy}
+                    onClick={openRewrite}
+                  >
+                    <Feather size={17} />
+                  </button>
                   <div className="tool-links">
                     {tabs.map((t) => (
                       <button
@@ -821,7 +962,9 @@ export default function App() {
                       <Square size={15} />{" "}
                       {phase === "Updating notes"
                         ? "Stop notes"
-                        : "Stop writing"}
+                        : phase === "Rewriting"
+                          ? "Stop rewriting"
+                          : "Stop writing"}
                     </button>
                   ) : (
                     <button
@@ -843,6 +986,9 @@ export default function App() {
                 />
                 <aside className="side-panel">
                   <div className="panel-close">
+                    {busy && phase === "Rewriting" && (
+                      <button onClick={stop}>Stop rewrite</button>
+                    )}
                     <button
                       className="icon"
                       aria-label="Close writing tools"
@@ -853,6 +999,87 @@ export default function App() {
                   </div>
                   <div className="panel-body">
                     <fieldset disabled={busy} className="panel-fieldset">
+                      {panel === "rewrite" && (
+                        <>
+                          <h2>Rewrite selection</h2>
+                          {rewrite ? (
+                            <>
+                              <label className="field">
+                                <span>
+                                  Selected passage ·{" "}
+                                  {rewrite.text.length.toLocaleString()}{" "}
+                                  characters
+                                </span>
+                                <textarea
+                                  aria-label="Selected passage"
+                                  readOnly
+                                  value={rewrite.text.slice(0, 6000)}
+                                  rows={5}
+                                />
+                              </label>
+                              <label className="field">
+                                <span>Editing instruction</span>
+                                <textarea
+                                  aria-label="Editing instruction"
+                                  value={rewriteInstruction}
+                                  onChange={(e) =>
+                                    setRewriteInstruction(e.target.value)
+                                  }
+                                  rows={3}
+                                />
+                              </label>
+                              <button
+                                disabled={!rewriteInstruction.trim()}
+                                onClick={() => void generateRewrite()}
+                              >
+                                Generate rewrite
+                              </button>
+                              <p className="help">
+                                Uses the writing model and Writing Output. The
+                                manuscript changes only when you apply the
+                                result. Notes are not changed automatically.
+                              </p>
+                              {rewriteDraft && (
+                                <>
+                                  <label className="field">
+                                    <span>Replacement preview</span>
+                                    <textarea
+                                      aria-label="Replacement preview"
+                                      value={rewriteDraft}
+                                      onChange={(e) =>
+                                        setRewriteDraft(e.target.value)
+                                      }
+                                      rows={8}
+                                    />
+                                  </label>
+                                  <div className="row">
+                                    <button
+                                      disabled={!rewriteDraft.trim()}
+                                      onClick={applyRewrite}
+                                    >
+                                      Apply replacement
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setRewrite(null);
+                                        setRewriteDraft("");
+                                        setPanel(null);
+                                      }}
+                                    >
+                                      Discard
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <p>
+                              Select text in the manuscript, then press Rewrite
+                              selection.
+                            </p>
+                          )}
+                        </>
+                      )}
                       {panel === "notes" && (
                         <NotesPanel
                           story={story}
@@ -980,7 +1207,7 @@ export default function App() {
                                 onClick={() => {
                                   store.add({
                                     ...story,
-                                    title: story.title + " · branch",
+                                    title: branchTitle(story, store.stories),
                                     parent: story.id,
                                     text: s.after,
                                     notes:

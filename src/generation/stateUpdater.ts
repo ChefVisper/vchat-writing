@@ -1,5 +1,7 @@
 import { DEFAULT_NOTE_PROMPT, uid, type Note, type Story } from "../types";
 import { estimate } from "../context/promptBuilder";
+import { noteConnection } from "../types";
+import { taskInstructions } from "../providers/types";
 export interface Update {
   noteId: string;
   newContent: string;
@@ -112,7 +114,12 @@ export function updaterPrompt(story: Story, newText: string) {
   );
 }
 export function buildNotePrompt(story: Story, prose: string) {
-  const budget = story.settings.context - story.settings.noteMaxTokens;
+  const budget =
+    story.settings.context -
+    story.settings.noteMaxTokens -
+    (noteConnection(story).kind === "openrouter"
+      ? estimate(taskInstructions.notes) + 12
+      : 0);
   if (estimate(updaterPrompt(story, "")) >= budget)
     throw new Error(
       "Notes and instructions exceed Max Context after reserving Note Output. Increase Max Context or shorten the notes.",

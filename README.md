@@ -42,7 +42,7 @@ Type directly into any part of the manuscript. **Continue** appends model output
 
 Other text fields retain normal editing shortcuts. Focus mode hides the surrounding tools. Settings include font size, page width, generation presets, and provider-appropriate sampling controls. Light and dark appearances persist locally.
 
-The library supports creating, duplicating, renaming (edit the manuscript title), importing, and deleting stories. History provides snapshots, branch creation, and text/project export. Full JSON projects preserve memory, lore, notes and revisions, settings, pending note reviews, generation records, snapshots, and document undo history (latest 100 edits).
+The library supports creating, duplicating, renaming (edit the manuscript title), importing, and deleting stories. History provides snapshots, branch creation, and text/project export. Branches are numbered within their story family: `Story · Branch 1`, `Story · Branch 2`, etc. Full JSON projects preserve memory, lore, notes and revisions, settings, pending note reviews, generation records, snapshots, and document undo history (latest 100 edits).
 
 ## Context and continuity
 
@@ -54,7 +54,7 @@ The prompt inspector shows the exact prompt, section token estimates, activation
 
 Notes are arbitrary text, not character sheets. Each has enabled, included, AI-editable, locked, injection position, keyword, and update-mode controls. Automatic updates are off for notes whose mode is Off, which are locked, disabled, or not AI-editable.
 
-After a successful story generation, eligible notes trigger a second request using the same provider. The updater receives current notes and new prose and must return:
+After a successful Continue/Retry, eligible notes trigger a second request using the configured notes connection. The updater receives current notes and new prose and must return:
 
 ```json
 {
@@ -140,6 +140,14 @@ The manuscript editor scrolls within its own writing area and follows new AI pro
 - Status remains visible in portrait mobile mode.
 
 The CodeMirror editor renders the visible portion of the manuscript. Streaming UI updates are batched, database writes are coalesced, and prompt previews are computed only while open. This avoids rendering the whole document or saving a full project per token.
+
+Local database records and version 2 project exports use shared manuscript references and text deltas for undo/redo, AI passages and snapshots. Note snapshots and revisions are also deduplicated. Earlier versions stored the entire manuscript many times; a modest story could therefore have a 50 MB export. Version 1 JSON files still import with their history intact. Existing local stories use the compact format on their next save; re-export an old project to get the smaller file. Large collections of genuinely different snapshots can still take substantial space. Editor updates apply changed spans without reading the whole document back, and word counts are debounced while typing.
+
+Select a passage anywhere in the manuscript, then press **Rewrite selection** (feather icon). Enter an editing instruction, generate a replacement, and review or edit its preview. **Apply replacement** changes only the selected range as one undo step; **Discard** keeps the manuscript. The writing model, Writing Output, scene guidance and nearby prose are used. If the manuscript changes after selection, applying is blocked until you select again. Notes remain unchanged; press **Note** afterward to check continuity. On mobile the panel includes its own Stop rewrite control.
+
+Settings includes **Trim incomplete sentences** (off by default). It removes an unfinished final sentence only from finished AI continuations or rewrites. It never trims existing manuscript text and manual Stop preserves partial output. Sentence-boundary detection is approximate, especially for abbreviations; ellipsis endings are treated as unfinished. A response with no complete sentence is not appended.
+
+OpenRouter settings include **Top K**, **Min P** and **Repetition penalty**, using the API's `top_k`, `min_p` and `repetition_penalty` fields. Parameters absent from a fetched model's supported-parameter list are omitted. Support also depends on the upstream provider; KoboldCpp's repetition range and Typical P are not sent. See [OpenRouter parameters](https://openrouter.ai/docs/api/reference/parameters). OpenRouter requests now have a task-specific system instruction in addition to the editable prompt. The tighter default writing prompt upgrades previous unmodified defaults without overwriting custom templates.
 
 Enter and Shift+Enter insert line breaks, including Android soft-keyboard Enter events. AI paragraph breaks are preserved in the manuscript. The default writing prompt asks the model to finish an author's incomplete sentence, use paragraph breaks, and end its own passage on a complete sentence. Existing unmodified defaults are upgraded; custom prompts remain unchanged. A provider's hard output limit can still cut a sentence short, so increase Writing Output if this persists.
 

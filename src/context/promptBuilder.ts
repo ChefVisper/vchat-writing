@@ -1,4 +1,5 @@
 import { DEFAULT_PROMPT_TEMPLATE, type Story, type Lore } from "../types";
+import { taskInstructions } from "../providers/types";
 export const estimate = (s: string) =>
   Math.ceil(new TextEncoder().encode(s).length / 3.5);
 const keys = (s: string) =>
@@ -136,7 +137,14 @@ export function buildPrompt(story: Story) {
   let text = story.text;
   let sections = assemble(text);
   const total = () => estimate(sections.map((x) => x.text).join("\n\n"));
-  const budget = Math.max(0, story.settings.context - story.settings.maxTokens);
+  const budget = Math.max(
+    0,
+    story.settings.context -
+      story.settings.maxTokens -
+      (story.connection.kind === "openrouter"
+        ? estimate(taskInstructions.writing) + 12
+        : 0),
+  );
   while (total() > budget && text.length) {
     const cut = Math.max(1, Math.ceil((total() - budget) * 3.5));
     text = text.slice(cut);

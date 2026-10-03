@@ -1,4 +1,10 @@
-import { base, headers, stream, type Provider } from "./types";
+import {
+  base,
+  headers,
+  stream,
+  taskInstructions,
+  type Provider,
+} from "./types";
 const modelOptions = new Map<
   string,
   {
@@ -62,10 +68,31 @@ export const openrouter: Provider = {
       signal: r.signal,
       body: JSON.stringify({
         model: r.connection.model,
-        messages: [{ role: "user", content: r.prompt }],
+        messages: [
+          {
+            role: "system",
+            content: taskInstructions[r.purpose ?? "writing"],
+          },
+          { role: "user", content: r.prompt },
+        ],
         max_tokens: s.maxTokens,
         temperature: s.temperature,
         top_p: s.top_p,
+        top_k:
+          !options?.supported_parameters ||
+          options.supported_parameters.includes("top_k")
+            ? s.top_k
+            : undefined,
+        min_p:
+          !options?.supported_parameters ||
+          options.supported_parameters.includes("min_p")
+            ? s.min_p
+            : undefined,
+        repetition_penalty:
+          !options?.supported_parameters ||
+          options.supported_parameters.includes("repetition_penalty")
+            ? s.rep_pen
+            : undefined,
         seed: s.seed < 0 ? undefined : s.seed,
         stop: s.stops.split("\n").filter(Boolean),
         stream: s.streaming,

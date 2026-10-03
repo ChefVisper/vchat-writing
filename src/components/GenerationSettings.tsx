@@ -302,15 +302,20 @@ export function GenerationSettings({
     ["context", "Max context (tokens)", 256, 262144],
   ];
   const native = ["kobold", "horde"].includes(story.connection.kind);
+  const samplers = native || story.connection.kind === "openrouter";
   const fields: [keyof Settings, string, number, number, number][] = [
     ["temperature", "Temperature", 0, 2, 0.05],
     ["top_p", "Top P", 0, 1, 0.01],
-    ...(native
+    ...(samplers
       ? ([
           ["top_k", "Top K", 0, 200, 1],
           ["min_p", "Min P", 0, 1, 0.01],
-          ["typical", "Typical P", 0, 1, 0.01],
           ["rep_pen", "Repetition penalty", 1, 2, 0.05],
+        ] as [keyof Settings, string, number, number, number][])
+      : []),
+    ...(native
+      ? ([
+          ["typical", "Typical P", 0, 1, 0.01],
           ["rep_pen_range", "Repetition range", 0, 32768, 1],
         ] as [keyof Settings, string, number, number, number][])
       : []),
@@ -437,6 +442,25 @@ export function GenerationSettings({
       </p>
       <details open className="settings-details">
         <summary>Generation settings</summary>
+        <Toggle
+          label="Trim incomplete sentences"
+          value={s.trimIncomplete}
+          onChange={(trimIncomplete) =>
+            patch({ settings: { ...s, trimIncomplete } })
+          }
+        />
+        <p className="help">
+          Removes an unfinished final sentence from completed AI output, never
+          from your own text. Manual Stop keeps partial output. Sentence
+          detection is approximate; ellipsis endings are treated as incomplete.
+        </p>
+        {story.connection.kind === "openrouter" && (
+          <p className="help">
+            Min P, Top K and repetition penalty depend on model support. After
+            Fetch models, unsupported parameters are omitted. KoboldCpp's
+            repetition range is not an OpenRouter parameter.
+          </p>
+        )}
         {fields.map(([key, label, min, max, step]) => (
           <Field key={key} label={label}>
             <input

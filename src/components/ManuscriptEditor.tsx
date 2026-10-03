@@ -17,7 +17,7 @@ import {
   placeholder,
   type DecorationSet,
 } from "@codemirror/view";
-import { insertNewline } from "@codemirror/commands";
+import { insertNewline, standardKeymap } from "@codemirror/commands";
 export { EditorView };
 
 function newline(view: EditorView) {
@@ -47,6 +47,7 @@ const highlightField = StateField.define<DecorationSet>({
 export interface ManuscriptHandle {
   scrollToEnd: () => void;
   find: (query: string) => boolean;
+  selection: () => { from: number; to: number; text: string } | null;
 }
 interface Props {
   text: string;
@@ -64,10 +65,17 @@ export const ManuscriptEditor = forwardRef<ManuscriptHandle, Props>(
     const current = useRef(props);
     current.current = props;
     const syncing = useRef(false);
+    const lastText = useRef(props.text);
     const readOnly = useRef(new Compartment());
     useImperativeHandle(
       ref,
       () => ({
+        selection() {
+          const editor = view.current;
+          if (!editor || editor.state.selection.main.empty) return null;
+          const { from, to } = editor.state.selection.main;
+          return { from, to, text: editor.state.sliceDoc(from, to) };
+        },
         scrollToEnd() {
           const editor = view.current;
           if (editor)
@@ -106,6 +114,7 @@ export const ManuscriptEditor = forwardRef<ManuscriptHandle, Props>(
           extensions: [
             EditorView.lineWrapping,
             keymap.of([{ key: "Enter", run: newline, shift: newline }]),
+            keymap.of(standardKeymap),
             placeholder("Write here…"),
             highlightField,
             readOnly.current.of(
@@ -118,8 +127,10 @@ export const ManuscriptEditor = forwardRef<ManuscriptHandle, Props>(
               enterkeyhint: "enter",
             }),
             EditorView.updateListener.of((update) => {
-              if (update.docChanged && !syncing.current)
-                current.current.onChange(update.state.doc.toString());
+              if (update.docChanged && !syncing.current) {
+                lastText.current = update.state.doc.toString();
+                current.current.onChange(lastText.current);
+              }
             }),
             EditorView.domEventHandlers({
               keydown(event) {
@@ -190,15 +201,18 @@ export const ManuscriptEditor = forwardRef<ManuscriptHandle, Props>(
     useLayoutEffect(() => {
       const editor = view.current;
       if (!editor) return;
-      const old = editor.state.doc.toString();
+      const old = lastText.current;
       if (old === props.text) return;
       let from = 0;
-      while (
-        from < old.length &&
-        from < props.text.length &&
-        old.charCodeAt(from) === props.text.charCodeAt(from)
-      )
-        from++;
+      if (props.text.startsWith(old) || old.startsWith(props.text))
+        from = Math.min(old.length, props.text.length);
+      else
+        while (
+          from < old.length &&
+          from < props.text.length &&
+          old.charCodeAt(from) === props.text.charCodeAt(from)
+        )
+          from++;
       let oldEnd = old.length,
         newEnd = props.text.length;
       while (
@@ -214,6 +228,7 @@ export const ManuscriptEditor = forwardRef<ManuscriptHandle, Props>(
         editor.dispatch({
           changes: { from, to: oldEnd, insert: props.text.slice(from, newEnd) },
         });
+        lastText.current = props.text;
       } finally {
         syncing.current = false;
       }

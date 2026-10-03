@@ -12,6 +12,40 @@ const req = (): Request => ({
 });
 afterEach(() => vi.unstubAllGlobals());
 describe("provider protocol", () => {
+  it("omits samplers that the OpenRouter model catalog does not support", async () => {
+    let body: any;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url, init) => {
+        if (!init?.method)
+          return Response.json({
+            data: [
+              {
+                id: "test/no-samplers",
+                supported_parameters: ["temperature", "top_p"],
+              },
+            ],
+          });
+        body = JSON.parse(init.body);
+        return Response.json({
+          choices: [{ message: { content: "A passage." } }],
+        });
+      }),
+    );
+    const r = req();
+    r.connection = {
+      kind: "openrouter",
+      url: "https://openrouter.ai/api/v1",
+      model: "test/no-samplers",
+    };
+    r.key = "fake-key";
+    r.settings.streaming = false;
+    await providers.openrouter.listModels(r.connection, r.key);
+    await providers.openrouter.generate(r);
+    expect(body).not.toHaveProperty("top_k");
+    expect(body).not.toHaveProperty("min_p");
+    expect(body).not.toHaveProperty("repetition_penalty");
+  });
   it("decodes streaming events split across network chunks", async () => {
     const chunks = [
       'data: {"token":"hel',
@@ -181,7 +215,8 @@ describe("OpenRouter", () => {
       "https://openrouter.ai/api/v1/chat/completions",
     );
     const body = JSON.parse(mock.mock.calls[0][1].body);
-    expect(body.messages).toEqual([{ role: "user", content: r.prompt }]);
+    expect(body.messages[0].role).toBe("system");
+    expect(body.messages[1]).toEqual({ role: "user", content: r.prompt });
     expect(body).not.toHaveProperty("rep_pen");
     expect(body).not.toHaveProperty("prompt");
     expect(mock.mock.calls[0][1].signal).toBe(r.signal);

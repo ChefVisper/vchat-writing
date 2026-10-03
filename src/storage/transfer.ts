@@ -1,34 +1,31 @@
 import { upgradePromptTemplate, newStory, type Story } from "../types";
+import { packStory, unpackStory } from "./compact";
 export function exportProject(s: Story) {
-  return JSON.stringify(
-    {
-      format: "margin-project",
-      version: 1,
-      story: {
-        ...s,
-        noteConnection: s.noteConnection
-          ? {
-              kind: s.noteConnection.kind,
-              url: s.noteConnection.url,
-              model: s.noteConnection.model,
-            }
-          : undefined,
-        connection: {
-          kind: s.connection.kind,
-          url: s.connection.url,
-          model: s.connection.model,
-        },
+  return JSON.stringify({
+    format: "margin-project",
+    version: 2,
+    ...packStory({
+      ...s,
+      noteConnection: s.noteConnection
+        ? {
+            kind: s.noteConnection.kind,
+            url: s.noteConnection.url,
+            model: s.noteConnection.model,
+          }
+        : undefined,
+      connection: {
+        kind: s.connection.kind,
+        url: s.connection.url,
+        model: s.connection.model,
       },
-    },
-    null,
-    2,
-  );
+    }),
+  });
 }
 export function importProject(raw: string): Story {
   const d = JSON.parse(raw);
-  if (d.format !== "margin-project" || d.version !== 1 || !d.story)
+  if (d.format !== "margin-project" || ![1, 2].includes(d.version) || !d.story)
     throw new Error("This is not a supported Margin project.");
-  const s = d.story;
+  const s = d.version === 2 ? unpackStory(d) : d.story;
   const base = newStory();
   s.settings = { ...base.settings, ...s.settings };
   delete s.settings.inputTokens;
