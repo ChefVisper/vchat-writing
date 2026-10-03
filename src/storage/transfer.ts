@@ -1,6 +1,5 @@
 import { upgradePromptTemplate, newStory, type Story } from "../types";
 import { packStory, unpackStory } from "./compact";
-import { validBodies } from "../body/model";
 export function exportProject(s: Story) {
   return JSON.stringify({
     format: "margin-project",
@@ -28,8 +27,6 @@ export function importProject(raw: string): Story {
     throw new Error("This is not a supported Margin project.");
   const s = d.version === 2 ? unpackStory(d) : d.story;
   const base = newStory();
-  if (s.bodies !== undefined && !validBodies(s.bodies))
-    throw new Error("Invalid body profiles or proportions.");
   s.settings = { ...base.settings, ...s.settings };
   delete s.settings.inputTokens;
   if (s.promptTemplate !== undefined && typeof s.promptTemplate !== "string")

@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useState, useRef, useMemo } from "react";
 import {
   BookOpen,
   Brain,
-  PersonStanding,
   Feather,
   Plus,
   ArrowLeft,
@@ -75,13 +74,11 @@ import {
 } from "./components/GenerationSettings";
 import { PromptInspector } from "./components/PromptInspector";
 import { ThinkingPanel } from "./components/ThinkingPanel";
-import { BodyPanel } from "./components/BodyPanel";
 import {
   ManuscriptEditor,
   type ManuscriptHandle,
 } from "./components/ManuscriptEditor";
 const tabs = [
-  { id: "body", label: "Body", icon: PersonStanding },
   { id: "thinking", label: "Thinking", icon: Brain },
   { id: "notes", label: "Notebook", icon: NotebookPen },
   { id: "context", label: "Memory", icon: Layers },
@@ -1063,9 +1060,6 @@ export default function App() {
                   </div>
                   <div className="panel-body">
                     <fieldset disabled={busy} className="panel-fieldset">
-                      {panel === "body" && (
-                        <BodyPanel key={story.id} story={story} patch={patch} />
-                      )}
                       {panel === "thinking" && (
                         <ThinkingPanel story={story} patch={patch} />
                       )}

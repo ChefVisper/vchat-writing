@@ -1,4 +1,3 @@
-import type { BodyProfile } from "./body/model";
 export type Position = "before" | "after";
 export interface ContextText {
   content: string;
@@ -110,7 +109,6 @@ export interface Story {
   lastUpdateText: string;
   pending?: { noteId: string; newContent: string; oldContent: string }[];
   thoughts?: Thought[];
-  bodies?: BodyProfile[];
 }
 export interface Thought {
   id: string;
