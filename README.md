@@ -2,6 +2,14 @@
 
 A local-first, continuous-prose writing desk built with React, TypeScript, and Vite. Your document is one editable manuscript; AI continuations are tracked separately for retry and branching.
 
+## Body visualization
+
+Open **Body** in the editor toolbar for a shaded, anime-inspired adult mannequin. Front and Back use the same proportions, with separate face/back details. Choose Navy mesh or Skin material, then adjust height, shoulders, chest, waist, hips, arm length/width and leg length/width. The ranges allow exaggerated silhouettes. The preview stays visible while scrolling the controls. Height is a design reference in centimeters; the other controls are artistic ratios, not physical circumference measurements.
+
+Use Add to create independent named character profiles. Profiles persist with the story, branches and full project exports; they do not enter AI prompts. Existing projects require no migration. Reset proportions restores the selected profile's default measurements. This first version uses a fixed pose and hairstyle; it does not infer anatomy from notes.
+
+The renderer uses a small SVG with gradients and a mesh pattern, without textures, animation loops, WebGL or image-generation calls. Only the open panel renders the figure. Saved profiles contain numbers rather than image copies. `src/body/model.ts` defines the versioned profile schema and geometry separately from `BodyFigure.tsx` materials/details, so future chest/hip shape families can be added without replacing the profile data model.
+
 ## Run locally
 
 Requires Node.js 22.12+ (tested with Node 24).

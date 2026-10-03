@@ -970,3 +970,89 @@ summary svg {
     scroll-behavior: auto !important;
   }
 }
+
+.body-profile-row,
+.body-view-controls {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+}
+.body-profile-row .field {
+  flex: 1;
+  min-width: 0;
+}
+.body-profile-row > button {
+  margin-bottom: 12px;
+}
+.body-view-controls {
+  align-items: center;
+  margin-bottom: 8px;
+}
+.body-view-controls select {
+  flex: 1;
+  min-width: 0;
+}
+.body-view-controls button[aria-pressed="true"] {
+  background: var(--accent);
+  color: white;
+}
+.body-preview {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: clamp(180px, 40dvh, 365px);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: radial-gradient(
+    ellipse at 50% 42%,
+    #314660 0%,
+    #182639 65%,
+    #101c2b 100%
+  );
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.body-figure {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.body-scale {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  color: #a9bbce;
+  font-size: 10px;
+}
+.body-sliders {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+.body-slider {
+  display: block;
+  font-size: 12px;
+}
+.body-slider > span {
+  display: flex;
+  justify-content: space-between;
+}
+.body-slider output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.body-slider input {
+  width: 100%;
+  margin: 6px 0 0;
+  accent-color: #729dcc;
+}
+@media (max-width: 600px) {
+  .body-preview {
+    height: clamp(160px, 38dvh, 330px);
+  }
+  .tool-links {
+    min-width: 0;
+    flex-shrink: 1;
+    overflow-x: auto;
+  }
+}
