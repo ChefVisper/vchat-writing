@@ -77,6 +77,7 @@ export interface Segment {
   at: number;
   notesBefore?: Note[];
   notesAfter?: Note[];
+  instruction?: string;
 }
 export interface Snapshot {
   id: string;
@@ -109,6 +110,8 @@ export interface Story {
   lastUpdateText: string;
   pending?: { noteId: string; newContent: string; oldContent: string }[];
   thoughts?: Thought[];
+  nextInstruction?: string;
+  keepInstruction?: boolean;
 }
 export interface Thought {
   id: string;

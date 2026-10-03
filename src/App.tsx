@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState, useRef, useMemo } from "react";
 import {
   BookOpen,
   Brain,
+  MessageSquarePlus,
   Feather,
   Plus,
   ArrowLeft,
@@ -94,6 +95,7 @@ export default function App() {
   const story = store.stories.find((x) => x.id === store.current);
   const [library, setLibrary] = useState(false);
   const [panel, setPanel] = useState<string | null>(null);
+  const [instructionOpen, setInstructionOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState("");
   const [status, setStatus] = useState("Not connected");
@@ -476,6 +478,9 @@ export default function App() {
           text: segment.before,
           notes: segment.notesBefore || s.notes,
           segments: s.segments.slice(0, -1),
+          nextInstruction: s.nextInstruction?.trim()
+            ? s.nextInstruction
+            : segment.instruction,
         };
       }
       const assembled = buildPrompt(s);
@@ -485,7 +490,7 @@ export default function App() {
         );
       if (assembled.overflow)
         throw new Error(
-          "Memory and notes exceed Max Context after reserving Writing Output.",
+          "Instructions, memory and notes exceed Max Context after reserving output. Shorten them or increase Max Context.",
         );
       if (!/^https?:\/\//.test(s.connection.url))
         throw new Error("Enter a valid HTTP server URL in Connection.");
@@ -502,6 +507,7 @@ export default function App() {
       if (retry) patch({ text: before, notes: s.notes, segments: s.segments });
       let raw = "";
       const thoughts = captureThinking("writing", s.connection);
+      let completed = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const renderDraft = () => {
         timer = undefined;
@@ -526,6 +532,7 @@ export default function App() {
           throw new Error(
             "The model returned no story text. Increase Writing Output or lower Writing Thinking.",
           );
+        completed = !c.signal.aborted;
       } catch (e) {
         if (!c.signal.aborted) throw e;
       } finally {
@@ -550,8 +557,20 @@ export default function App() {
             future: [],
             segments: [
               ...s.segments,
-              { id: uid(), before, after: text, at: Date.now(), notesBefore },
+              {
+                id: uid(),
+                before,
+                after: text,
+                at: Date.now(),
+                notesBefore,
+                instruction: s.nextInstruction?.trim() || undefined,
+              },
             ],
+            ...(completed &&
+            !s.keepInstruction &&
+            current().nextInstruction === s.nextInstruction
+              ? { nextInstruction: "" }
+              : {}),
           });
         } else if (retry) {
           patch({
@@ -968,6 +987,41 @@ export default function App() {
                   />
                 </div>
               </div>
+              {instructionOpen && (
+                <div className="next-instruction" id="next-instruction">
+                  <label htmlFor="next-instruction-text">
+                    Next instruction
+                  </label>
+                  <textarea
+                    id="next-instruction-text"
+                    rows={2}
+                    maxLength={5000}
+                    disabled={busy}
+                    value={story.nextInstruction ?? ""}
+                    placeholder="Guide the next passage…"
+                    onChange={(e) => patch({ nextInstruction: e.target.value })}
+                  />
+                  <div className="instruction-options">
+                    <label>
+                      <input
+                        type="checkbox"
+                        disabled={busy}
+                        checked={story.keepInstruction ?? false}
+                        onChange={(e) =>
+                          patch({ keepInstruction: e.target.checked })
+                        }
+                      />
+                      Keep for next passages
+                    </label>
+                    <button
+                      disabled={busy || !story.nextInstruction}
+                      onClick={() => patch({ nextInstruction: "" })}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="compose-dock">
                 <div className="dock-left">
                   <button
@@ -991,6 +1045,27 @@ export default function App() {
                   </span>
                 </div>
                 <div className="dock-actions">
+                  <button
+                    className={
+                      story.nextInstruction?.trim()
+                        ? "instruction-button active"
+                        : "instruction-button"
+                    }
+                    aria-label="Next instruction"
+                    aria-expanded={instructionOpen}
+                    aria-controls="next-instruction"
+                    title={
+                      story.nextInstruction?.trim()
+                        ? "Next instruction ready"
+                        : "Guide the next passage"
+                    }
+                    onClick={() => setInstructionOpen(!instructionOpen)}
+                  >
+                    <MessageSquarePlus size={17} />
+                    {!!story.nextInstruction?.trim() && (
+                      <span className="instruction-dot" />
+                    )}
+                  </button>
                   <button
                     disabled={busy}
                     onClick={() => void generate(false, "note")}

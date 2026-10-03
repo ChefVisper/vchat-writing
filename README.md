@@ -132,6 +132,10 @@ The manuscript editor scrolls within its own writing area and follows new AI pro
 
 ## Writing and notes controls
 
+Use the speech-bubble button beside the generation controls to open **Next instruction**. This per-story direction applies to Continue and Write without editing the main prompt. It is protected during context trimming and appears in the prompt inspector. A successful, nonempty passage clears it unless **Keep for next passages** is checked. Errors, manual Stop and responses trimmed to nothing preserve it. It clears after successful prose even if the subsequent note update fails. Closing the field does not disable a entered direction; the button's dot indicates one is ready. Use Clear to remove it. Drafts and the keep switch persist locally and in project exports.
+
+Retry reuses the latest passage's direction unless you enter a new one. Directions are stored with the passage history for this purpose. Note-only requests and selection rewrites do not receive or consume Next instruction.
+
 - **Continue** writes a passage and then checks notes. **Retry** replaces the latest unchanged passage and checks notes.
 - **Write** generates prose only. **Note** checks the current manuscript against editable notes without adding prose.
 - **Stop writing** moves Continue/Retry to the note stage; in Write-only mode it finishes the run. **Stop notes** cancels note generation without applying partial JSON.

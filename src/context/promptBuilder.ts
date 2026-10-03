@@ -140,6 +140,17 @@ export function buildPrompt(story: Story) {
         name: "Output guidance",
         text: `VISIBLE PROSE: Under ${story.settings.maxTokens} tokens (reasoning excluded). Finish the final sentence; keep thinking separate.`,
       },
+      ...(story.nextInstruction?.trim()
+        ? [
+            {
+              name: "Next instruction",
+              text: block(
+                "DIRECTION FOR THIS PASSAGE — apply without quoting or explaining it",
+                story.nextInstruction.trim(),
+              ),
+            },
+          ]
+        : []),
       ...template
         .split(/(\{\{context\}\}|\{\{story\}\})/g)
         .flatMap((part): Section[] => {

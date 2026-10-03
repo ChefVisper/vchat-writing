@@ -27,6 +27,13 @@ export function importProject(raw: string): Story {
     throw new Error("This is not a supported Margin project.");
   const s = d.version === 2 ? unpackStory(d) : d.story;
   const base = newStory();
+  if (
+    (s.nextInstruction !== undefined &&
+      (typeof s.nextInstruction !== "string" ||
+        s.nextInstruction.length > 5000)) ||
+    (s.keepInstruction !== undefined && typeof s.keepInstruction !== "boolean")
+  )
+    throw new Error("Invalid next instruction.");
   s.settings = { ...base.settings, ...s.settings };
   delete s.settings.inputTokens;
   if (s.promptTemplate !== undefined && typeof s.promptTemplate !== "string")
@@ -198,6 +205,8 @@ export function importProject(raw: string): Story {
         text(x.before) &&
         text(x.after) &&
         finite(x.at) &&
+        (x.instruction === undefined ||
+          (text(x.instruction) && x.instruction.length <= 5000)) &&
         (!x.notesBefore || validNotes(x.notesBefore)) &&
         (!x.notesAfter || validNotes(x.notesAfter)),
     ) ||

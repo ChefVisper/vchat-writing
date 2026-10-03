@@ -970,3 +970,60 @@ summary svg {
     scroll-behavior: auto !important;
   }
 }
+
+.next-instruction {
+  margin: 6px 10px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  font-size: 12px;
+}
+.next-instruction > label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+}
+.next-instruction textarea {
+  width: 100%;
+  min-height: 48px;
+  max-height: 120px;
+  resize: vertical;
+}
+.instruction-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+.instruction-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.instruction-options input {
+  width: auto;
+}
+.instruction-options button {
+  font-size: 11px;
+  padding: 3px 7px;
+}
+.instruction-button {
+  position: relative;
+}
+.instruction-button.active {
+  background: var(--accent);
+}
+.instruction-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background: #b9e0ff;
+  border-radius: 50%;
+  top: 3px;
+  right: 3px;
+}
+.focus-mode .next-instruction {
+  display: none;
+}

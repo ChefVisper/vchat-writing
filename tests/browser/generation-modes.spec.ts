@@ -170,6 +170,12 @@ test("stopping a live stream keeps partial prose and submits it to notes", async
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByLabel("Trim incomplete sentences", { exact: true }).check();
     await page.getByRole("button", { name: "Close writing tools" }).click();
+    await page
+      .getByRole("button", { name: "Next instruction", exact: true })
+      .click();
+    await page
+      .getByRole("textbox", { name: "Next instruction", exact: true })
+      .fill("Keep the scene quiet.");
     const before = await editorValue(page);
     await page.getByRole("button", { name: "Continue", exact: false }).click();
     await expectEditor(page, before + " A partial passage without an ending");
@@ -180,6 +186,10 @@ test("stopping a live stream keeps partial prose and submits it to notes", async
       page.getByRole("button", { name: "Continue", exact: false }),
     ).toBeEnabled();
     expect(notePrompt).toContain("A partial passage without an ending");
+    await expect(
+      page.getByRole("textbox", { name: "Next instruction", exact: true }),
+    ).toHaveValue("Keep the scene quiet.");
+    expect(notePrompt).not.toContain("Keep the scene quiet.");
     await expectEditor(page, before + " A partial passage without an ending");
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expectEditor(page, before);
