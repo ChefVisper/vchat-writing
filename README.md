@@ -26,8 +26,10 @@ npx playwright test
 Open **Connection** (plug icon), choose a provider, and test the connection.
 
 - **KoboldCpp:** defaults to `http://localhost:5001`. Supports native completion, SSE streaming, abort, model discovery, context discovery, and token counting. Run your KoboldCpp server with browser access/CORS permitted for the app origin.
-- **OpenAI-compatible:** supply a base URL ending in `/v1`, such as `http://localhost:1234/v1`, and a text-completion model identifier. Uses `/completions`, not a chat endpoint. Sends only the common completion parameters; native Kobold sampling settings are not sent.
+- **OpenAI-compatible:** supply a base URL ending in `/v1`, such as `http://localhost:1234/v1`, and a text-completion model identifier. Uses `/completions`, not a chat endpoint. Sends common completion parameters plus Top K, Min P and Repetition penalty extensions; the server must support them.
 - **AI Horde:** defaults to `https://aihorde.net`. Uses asynchronous text generation, polls for completed text, and cancels queued work when stopped. Horde does not stream individual tokens. Optional model identifier and API key; an empty key uses anonymous access.
+- **OpenRouter:** chat completions, fetched model capabilities and exposed reasoning; defaults to `https://openrouter.ai/api/v1`.
+- **NanoGPT:** chat completions, model discovery and exposed reasoning; defaults to `https://api.nano-gpt.com/api/v1`.
 
 Keys are saved in this browser's local storage, separately from the manuscript database, and are excluded from project exports and repository files. They survive reloads and mobile tab suspension. Use Forget API key to remove a saved key; clearing browser data also removes keys. Notes and manuscript context are sent to the provider you select. A remote provider therefore receives that context; use a local model for an entirely local workflow. Do not put credentials in endpoint URLs.
 
@@ -70,7 +72,7 @@ The model is instructed to preserve unchanged facts and only infer changes suppo
 
 ## Modules
 
-- `src/providers`: provider interface and four adapters; streaming parser
+- `src/providers`: provider interface and five adapters; streaming parser and reasoning separation
 - `src/context`: prompt assembly, lore activation, token estimates and trimming
 - `src/generation`: note update validation, retry safety, continuation cleanup
 - `src/storage`: IndexedDB and versioned project transfer
@@ -134,7 +136,7 @@ The manuscript editor scrolls within its own writing area and follows new AI pro
 - **Write** generates prose only. **Note** checks the current manuscript against editable notes without adding prose.
 - **Stop writing** moves Continue/Retry to the note stage; in Write-only mode it finishes the run. **Stop notes** cancels note generation without applying partial JSON.
 - In Connection, switch between Writing connection and Notes connection. Notes can share the same API and model, use the same API/key with a different model, or use a separate provider, endpoint, model and key.
-- Settings provides Writing Output, Note Output and Max Context. Writing Thinking and Note Thinking have independent on/off and effort controls for OpenRouter. Support varies by model; some require thinking. Reasoning consumes the provider's output budget.
+- Settings provides Writing Output, Note Output, Thinking Output, Note Thinking Output and Max Context. Writing and note reasoning have independent on/off and effort controls for OpenRouter and NanoGPT. Support varies by model; some require thinking. Each request reserves both its visible and thinking budgets in Max Context.
 - Both writing and note prompts can be edited in Prompt. Custom prompts survive updates. Old unmodified default writing prompts are upgraded automatically.
 - Click inside the latest unchanged AI passage to tint its text a subtle blue. Click elsewhere or edit the text to clear the tint. The caret remains usable.
 - Status remains visible in portrait mobile mode.
@@ -165,3 +167,19 @@ npm run dev
 Keep using the same browser and origin (for example, http://127.0.0.1:5173) to retain access to local stories and saved keys.
 
 API references: [OpenRouter reasoning controls](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens), [OpenRouter structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs).
+
+## NanoGPT and Thinking
+
+Select **NanoGPT** in AI/Connection, enter your key, and use **Fetch models**. The default base URL is `https://api.nano-gpt.com/api/v1`. Writing and notes can use separate NanoGPT models or different providers. NanoGPT requests use chat completions with `reasoning.effort` (`none` when disabled). Its normal endpoint returns exposed thoughts in `reasoning` or `reasoning_content`; both are supported. A model can still reason when disabled, or expose no readable thoughts. See [NanoGPT introduction](https://docs.nano-gpt.com/introduction), [chat completions](https://docs.nano-gpt.com/api-reference/endpoint/chat-completion) and [extended thinking](https://docs.nano-gpt.com/api-reference/miscellaneous/extended-thinking).
+
+The brain button in the editor toolbar opens **Thinking**. Exposed reasoning from writing, rewriting and note updates is stored separately, including reasoning received before a Stop/error. It never enters the manuscript, word count or default context. Check individual records and enable **Include selected thinking in context** to use only those records as unverified reference in writing, rewrite and note prompts. Switching it off retains your selections. Records persist in local storage and project exports; delete unwanted records in the panel. Undo/redo now sit at the bottom left and continue to operate on manuscript changes rather than thinking records.
+
+**Thinking Output** and **Note Thinking Output** bound the stored reasoning using the app's UTF-8 token estimate. Writing/rewrite visible text has a separate estimated Writing Output cap. For example, Writing Output 150 and Thinking Output 2,048 request a combined API budget of 2,198, so reasoning does not simply consume the original 150-token allowance. The app stops visible generation at its estimated writing cap. Exact counts depend on the model tokenizer, and a provider can still exhaust its combined budget before producing an answer. Valid note JSON is never cut with the local prose estimate: Note Output is enforced by the provider and the result must pass complete-JSON validation.
+
+OpenRouter receives a reasoning `max_tokens` budget only when its fetched model catalog advertises that capability; otherwise it receives an effort level. Models may impose minimum thinking budgets (for example, Anthropic's 1,024-token minimum). Fetch models before choosing a budget. NanoGPT documents effort controls but no separate hard reasoning-token cap. On effort-only or local servers, Thinking Output limits **captured text and the reserved allowance**, not server-side reasoning computation or billing. Local completion servers use their own thinking controls. Encrypted or unexposed reasoning cannot be displayed. These API limitations prevent a universal exact split between answer and reasoning tokens. See [OpenRouter reasoning controls](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
+
+Both budgets are reserved even with Thinking off, for models that think anyway; set Thinking Output to 0 to reserve/store none. Settings also lets you edit **Thinking prefix** and **Thinking suffix**, defaulting to `<think>` / `</think>`. Both custom tags and default tags are filtered incrementally, even when split across network chunks. Unclosed tagged thoughts remain private. **Server prefills thinking prefix** is for completion servers that omit the opening tag because it is already in their prompt. Do not enable it for normal separate-field chat responses. Untagged reasoning mixed indistinguishably with answer prose cannot be reliably detected; use a model exposing separate reasoning fields or its correct tags.
+
+Top K, Min P and Repetition penalty sliders are available for all five providers. KoboldCpp/Horde use native sampler names; NanoGPT/OpenRouter/OpenAI-compatible completions use `top_k`, `min_p`, `repetition_penalty`. Explicitly unsupported catalog parameters are omitted for NanoGPT/OpenRouter. Generic OpenAI-compatible completion servers must implement these extensions; official OpenAI endpoints and some servers can reject them. See [NanoGPT chat parameters](https://docs.nano-gpt.com/api-reference/endpoint/chat-completion) and [OpenRouter parameters](https://openrouter.ai/docs/api/reference/parameters).
+
+Automated tests exercise controlled NanoGPT and OpenRouter responses, fragmented tags, forced reasoning, independent budgets, selective context, persistence, samplers and portrait mobile controls. Live paid generation has not been tested with a real NanoGPT key.

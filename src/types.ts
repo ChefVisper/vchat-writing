@@ -58,9 +58,15 @@ export interface Settings {
   stops: string;
   streaming: boolean;
   trimIncomplete: boolean;
+  thinkingMaxTokens: number;
+  noteThinkingMaxTokens: number;
+  thinkingPrefix: string;
+  thinkingSuffix: string;
+  thinkingPrefill: boolean;
+  includeThinking: boolean;
 }
 export interface Connection {
-  kind: "kobold" | "openai" | "horde" | "openrouter";
+  kind: "kobold" | "openai" | "horde" | "openrouter" | "nanogpt";
   url: string;
   model: string;
 }
@@ -102,6 +108,16 @@ export interface Story {
   parent?: string;
   lastUpdateText: string;
   pending?: { noteId: string; newContent: string; oldContent: string }[];
+  thoughts?: Thought[];
+}
+export interface Thought {
+  id: string;
+  at: number;
+  model: string;
+  provider: Connection["kind"];
+  purpose: "writing" | "notes" | "rewrite";
+  text: string;
+  selected: boolean;
 }
 export const uid = () => {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -132,6 +148,12 @@ export const defaults: Settings = {
   stops: "",
   streaming: true,
   trimIncomplete: false,
+  thinkingMaxTokens: 2048,
+  noteThinkingMaxTokens: 2048,
+  thinkingPrefix: "<think>",
+  thinkingSuffix: "</think>",
+  thinkingPrefill: false,
+  includeThinking: false,
 };
 const PREVIOUS_PROMPT_TEMPLATE = `Continue the manuscript directly from its last character, including an unfinished sentence. Return only new prose that can be appended without repeating the ending.
 Match the manuscript's language, point of view, tense, narrative distance, voice, and formatting. Follow the author's guidance and preserve established characters, facts, chronology, and scene geography. Let dialogue and actions follow the characters' motives; develop the current moment without forcing a resolution or an unrequested time jump.

@@ -20,6 +20,7 @@ describe("context assembly", () => {
     s.text = "Old paragraph.\n\n".repeat(500) + "The final sentence.";
     s.settings.inputTokens = 400;
     s.settings.context = 1200;
+    s.settings.thinkingMaxTokens = 0;
     s.settings.maxTokens = 200;
     const p = buildPrompt(s);
     expect(p.budget).toBe(1000);
@@ -31,6 +32,7 @@ describe("context assembly", () => {
     const s = newStory();
     s.settings.inputTokens = 6000;
     s.settings.context = 2000;
+    s.settings.thinkingMaxTokens = 0;
     s.settings.maxTokens = 500;
     expect(buildPrompt(s).budget).toBe(1500);
   });
@@ -47,6 +49,7 @@ describe("context assembly", () => {
     const s = newStory(true);
     s.text = "OLD ".repeat(5000) + "END";
     s.settings.context = 650;
+    s.settings.thinkingMaxTokens = 0;
     s.settings.maxTokens = 100;
     const p = buildPrompt(s);
     expect(p.trimmed).toBeGreaterThan(0);
@@ -154,6 +157,7 @@ describe("safe note updates", () => {
     const s = newStory(true);
     s.settings.context = 2000;
     s.settings.noteMaxTokens = 700;
+    s.settings.noteThinkingMaxTokens = 0;
     const result = buildNotePrompt(
       s,
       "Older prose. ".repeat(10000) + "The final event.",

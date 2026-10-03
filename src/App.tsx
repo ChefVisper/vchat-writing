@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState, useRef, useMemo } from "react";
 import {
   BookOpen,
+  Brain,
   Feather,
   Plus,
   ArrowLeft,
@@ -39,6 +40,7 @@ import {
   type Story,
   type Note,
   type Connection,
+  type Thought,
   newStory,
   noteConnection,
 } from "./types";
@@ -71,11 +73,13 @@ import {
   GenerationSettings,
 } from "./components/GenerationSettings";
 import { PromptInspector } from "./components/PromptInspector";
+import { ThinkingPanel } from "./components/ThinkingPanel";
 import {
   ManuscriptEditor,
   type ManuscriptHandle,
 } from "./components/ManuscriptEditor";
 const tabs = [
+  { id: "thinking", label: "Thinking", icon: Brain },
   { id: "notes", label: "Notebook", icon: NotebookPen },
   { id: "context", label: "Memory", icon: Layers },
   { id: "lore", label: "Lorebook", icon: Globe2 },
@@ -220,6 +224,46 @@ export default function App() {
     setError("");
     setPanel("rewrite");
   }
+  function captureThinking(
+    purpose: Thought["purpose"],
+    connection: Connection,
+  ) {
+    const storyId = current().id,
+      id = uid(),
+      at = Date.now();
+    let text = "",
+      timer: ReturnType<typeof setTimeout> | undefined;
+    const save = () => {
+      timer = undefined;
+      if (!text || current().id !== storyId) return;
+      const all = current().thoughts ?? [],
+        previous = all.find((t) => t.id === id);
+      const record: Thought = {
+        id,
+        at,
+        model: connection.model,
+        provider: connection.kind,
+        purpose,
+        text,
+        selected: previous?.selected ?? false,
+      };
+      patch({
+        thoughts: previous
+          ? all.map((t) => (t.id === id ? record : t))
+          : [...all, record],
+      });
+    };
+    return {
+      onReasoning: (token: string) => {
+        text += token;
+        if (!timer) timer = setTimeout(save, 80);
+      },
+      finish: () => {
+        clearTimeout(timer);
+        save();
+      },
+    };
+  }
   async function generateRewrite() {
     if (busy || controller.current || !rewrite) return;
     const s = current();
@@ -238,6 +282,7 @@ export default function App() {
     nativeAbort.current = Promise.resolve();
     let raw = "",
       timer: ReturnType<typeof setTimeout> | undefined;
+    const thoughts = captureThinking("rewrite", s.connection);
     try {
       const prompt = buildRewritePrompt(
         s,
@@ -250,6 +295,7 @@ export default function App() {
         connection: s.connection,
         key: apiKey,
         purpose: "rewrite",
+        onReasoning: thoughts.onReasoning,
         settings: { ...s.settings, stops: "" },
         signal: c.signal,
         onToken: (token) => {
@@ -270,6 +316,7 @@ export default function App() {
         setError(e instanceof Error ? e.message : "Rewrite failed.");
     } finally {
       clearTimeout(timer);
+      thoughts.finish();
       const clean = cleanContinuation(raw);
       setRewriteDraft(
         s.settings.trimIncomplete && !c.signal.aborted
@@ -347,23 +394,31 @@ export default function App() {
       return;
     }
     const assembled = buildNotePrompt(now, prose);
-    const result = await providers[connection.kind].generate({
-      prompt: assembled.prompt,
-      connection,
-      key,
-      purpose: "notes",
-      signal: c.signal,
-      settings: {
-        ...now.settings,
-        temperature: 0.1,
-        maxTokens: now.settings.noteMaxTokens,
-        thinking: now.settings.noteThinking,
-        thinkingLevel: now.settings.noteThinkingLevel,
-        streaming: false,
-        stops: "",
-      },
-      onToken: () => {},
-    });
+    const thoughts = captureThinking("notes", connection);
+    let result: string;
+    try {
+      result = await providers[connection.kind].generate({
+        prompt: assembled.prompt,
+        connection,
+        key,
+        purpose: "notes",
+        onReasoning: thoughts.onReasoning,
+        signal: c.signal,
+        settings: {
+          ...now.settings,
+          temperature: 0.1,
+          maxTokens: now.settings.noteMaxTokens,
+          thinking: now.settings.noteThinking,
+          thinkingLevel: now.settings.noteThinkingLevel,
+          thinkingMaxTokens: now.settings.noteThinkingMaxTokens,
+          streaming: false,
+          stops: "",
+        },
+        onToken: () => {},
+      });
+    } finally {
+      thoughts.finish();
+    }
     c.signal.throwIfAborted();
     const updates = validateUpdates(result, current().notes);
     let notes = current().notes;
@@ -446,6 +501,7 @@ export default function App() {
       const notesBefore = structuredClone(s.notes);
       if (retry) patch({ text: before, notes: s.notes, segments: s.segments });
       let raw = "";
+      const thoughts = captureThinking("writing", s.connection);
       let timer: ReturnType<typeof setTimeout> | undefined;
       const renderDraft = () => {
         timer = undefined;
@@ -459,6 +515,7 @@ export default function App() {
           connection: s.connection,
           key: apiKey,
           purpose: "writing",
+          onReasoning: thoughts.onReasoning,
           signal: c.signal,
           onToken: (token) => {
             raw += token;
@@ -473,6 +530,7 @@ export default function App() {
         if (!c.signal.aborted) throw e;
       } finally {
         clearTimeout(timer);
+        thoughts.finish();
         const clean = cleanContinuation(raw);
         const addition =
           s.settings.trimIncomplete && !c.signal.aborted
@@ -677,6 +735,7 @@ export default function App() {
                 openai: "OpenAI compatible",
                 horde: "AI Horde",
                 openrouter: "OpenRouter",
+                nanogpt: "NanoGPT",
               }[story.connection.kind]
             }
           </button>
@@ -827,22 +886,6 @@ export default function App() {
                       </button>
                     ))}
                   </div>
-                  <button
-                    className="icon"
-                    aria-label="Undo"
-                    disabled={busy || !story.past.length}
-                    onClick={store.undo}
-                  >
-                    <Undo2 size={17} />
-                  </button>
-                  <button
-                    className="icon"
-                    aria-label="Redo"
-                    disabled={busy || !story.future.length}
-                    onClick={store.redo}
-                  >
-                    <Redo2 size={17} />
-                  </button>
                 </div>
                 <div className="row">
                   <button
@@ -926,9 +969,27 @@ export default function App() {
                 </div>
               </div>
               <div className="compose-dock">
-                <span className="document-status">
-                  {busy ? phase + "…" : words.toLocaleString() + " words"}
-                </span>
+                <div className="dock-left">
+                  <button
+                    className="icon"
+                    aria-label="Undo"
+                    disabled={busy || !story.past.length}
+                    onClick={store.undo}
+                  >
+                    <Undo2 size={17} />
+                  </button>
+                  <button
+                    className="icon"
+                    aria-label="Redo"
+                    disabled={busy || !story.future.length}
+                    onClick={store.redo}
+                  >
+                    <Redo2 size={17} />
+                  </button>
+                  <span className="document-status">
+                    {busy ? phase + "…" : words.toLocaleString() + " words"}
+                  </span>
+                </div>
                 <div className="dock-actions">
                   <button
                     disabled={busy}
@@ -999,6 +1060,9 @@ export default function App() {
                   </div>
                   <div className="panel-body">
                     <fieldset disabled={busy} className="panel-fieldset">
+                      {panel === "thinking" && (
+                        <ThinkingPanel story={story} patch={patch} />
+                      )}
                       {panel === "rewrite" && (
                         <>
                           <h2>Rewrite selection</h2>

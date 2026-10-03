@@ -310,6 +310,20 @@ a {
   color: var(--muted);
   min-width: 85px;
 }
+.dock-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.thinking-record pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 13px;
+  max-height: 360px;
+  overflow: auto;
+}
 .token-limits {
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -892,6 +906,14 @@ summary svg {
     display: block;
     flex: 1 0 100%;
     font-size: 11px;
+  }
+  .dock-left {
+    flex: 1 0 100%;
+  }
+  .dock-left .document-status {
+    display: block;
+    flex: 1;
+    min-width: 0;
   }
   .length-control {
     flex: 1;

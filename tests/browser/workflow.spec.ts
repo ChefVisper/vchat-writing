@@ -297,7 +297,7 @@ test("settings limits and OpenRouter output persist", async ({ page }) => {
   await editor.fill("Opening.");
   await page.getByRole("button", { name: "Continue", exact: false }).click();
   await expectEditor(page, "Opening. More prose.");
-  expect(sent.max_tokens).toBe(333);
+  expect(sent.max_tokens).toBe(333 + 2048);
   expect(sent.messages.find((m: any) => m.role === "user").content).toContain(
     "Opening.",
   );

@@ -3,13 +3,19 @@ import {
   headers,
   stream,
   taskInstructions,
+  reasoningText,
   type Provider,
 } from "./types";
+import { totalOutput } from "../generation/thinking";
 const modelOptions = new Map<
   string,
   {
     supported_parameters?: string[];
-    reasoning?: { mandatory?: boolean; supported_efforts?: string[] };
+    reasoning?: {
+      mandatory?: boolean;
+      supported_efforts?: string[];
+      supports_max_tokens?: boolean;
+    };
   }
 >();
 function rememberModels(url: string, data: any) {
@@ -49,13 +55,10 @@ export const openrouter: Provider = {
     const options = modelOptions.get(
       `${base(r.connection)}/${r.connection.model}`,
     );
-    if (options?.reasoning?.mandatory && !s.thinking)
-      throw new Error(
-        "This model requires Thinking. Enable it in Settings or select a non-thinking model.",
-      );
     const supportedEfforts = options?.reasoning?.supported_efforts;
     if (
       s.thinking &&
+      !options?.reasoning?.supports_max_tokens &&
       supportedEfforts?.length &&
       !supportedEfforts.includes(s.thinkingLevel)
     )
@@ -75,7 +78,7 @@ export const openrouter: Provider = {
           },
           { role: "user", content: r.prompt },
         ],
-        max_tokens: s.maxTokens,
+        max_tokens: totalOutput(s),
         temperature: s.temperature,
         top_p: s.top_p,
         top_k:
@@ -96,9 +99,23 @@ export const openrouter: Provider = {
         seed: s.seed < 0 ? undefined : s.seed,
         stop: s.stops.split("\n").filter(Boolean),
         stream: s.streaming,
-        reasoning: s.thinking
-          ? { enabled: true, effort: s.thinkingLevel }
-          : { enabled: false },
+        reasoning:
+          s.thinking || options?.reasoning?.mandatory
+            ? options?.reasoning?.supports_max_tokens && s.thinkingMaxTokens > 0
+              ? {
+                  enabled: true,
+                  max_tokens: s.thinkingMaxTokens,
+                  exclude: false,
+                }
+              : {
+                  enabled: true,
+                  effort:
+                    !s.thinking && supportedEfforts?.length
+                      ? supportedEfforts[0]
+                      : s.thinkingLevel,
+                  exclude: false,
+                }
+            : { enabled: false, exclude: false },
         response_format:
           r.purpose === "notes" &&
           options?.supported_parameters?.includes("response_format")
@@ -118,6 +135,8 @@ export const openrouter: Provider = {
           if (choice?.finish_reason) finishReason = choice.finish_reason;
           if (choice?.delta?.reasoning || choice?.delta?.reasoning_details)
             reasoningSeen = true;
+          const thoughts = reasoningText(choice?.delta);
+          if (thoughts) r.onReasoning?.(thoughts);
           return choice?.delta?.content || "";
         },
         (error) =>
@@ -137,6 +156,8 @@ export const openrouter: Provider = {
         "OpenRouter could not complete the request. Check your model and credits.",
       );
     const text = data.choices?.[0]?.message?.content;
+    const thoughts = reasoningText(data.choices?.[0]?.message);
+    if (thoughts) r.onReasoning?.(thoughts);
     if (r.purpose === "notes" && data.choices?.[0]?.finish_reason === "length")
       throw new Error(
         "Note output was cut off. Increase Note Output or lower Note Thinking. No notes were changed.",

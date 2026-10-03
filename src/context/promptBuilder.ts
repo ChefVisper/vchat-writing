@@ -1,5 +1,6 @@
 import { DEFAULT_PROMPT_TEMPLATE, type Story, type Lore } from "../types";
 import { taskInstructions } from "../providers/types";
+import { totalOutput, thinkingContext } from "../generation/thinking";
 export const estimate = (s: string) =>
   Math.ceil(new TextEncoder().encode(s).length / 3.5);
 const keys = (s: string) =>
@@ -86,6 +87,15 @@ export function buildPrompt(story: Story) {
   const assemble = (text: string): Section[] => {
     const before: Section[] = [];
     const after: Section[] = [];
+    const thoughts = thinkingContext(story);
+    if (thoughts)
+      before.push({
+        name: "Selected thinking",
+        text: block(
+          "SELECTED THINKING — unverified reference, not established facts",
+          thoughts,
+        ),
+      });
     if (story.memory.enabled && story.memory.content)
       (story.memory.position === "before" ? before : after).push({
         name: "Memory",
@@ -125,14 +135,20 @@ export function buildPrompt(story: Story) {
       });
     const tail = paras.slice(split).join("\n\n");
     const context = [...before, ...middle, ...after].filter((x) => x.text);
-    return template
-      .split(/(\{\{context\}\}|\{\{story\}\})/g)
-      .flatMap((part): Section[] => {
-        if (part === "{{context}}") return context;
-        if (part === "{{story}}")
-          return [{ name: "Continuation point", text: tail }];
-        return part ? [{ name: "Template", text: part }] : [];
-      });
+    return [
+      {
+        name: "Output guidance",
+        text: `VISIBLE PROSE: Under ${story.settings.maxTokens} tokens (reasoning excluded). Finish the final sentence; keep thinking separate.`,
+      },
+      ...template
+        .split(/(\{\{context\}\}|\{\{story\}\})/g)
+        .flatMap((part): Section[] => {
+          if (part === "{{context}}") return context;
+          if (part === "{{story}}")
+            return [{ name: "Continuation point", text: tail }];
+          return part ? [{ name: "Template", text: part }] : [];
+        }),
+    ];
   };
   let text = story.text;
   let sections = assemble(text);
@@ -140,8 +156,8 @@ export function buildPrompt(story: Story) {
   const budget = Math.max(
     0,
     story.settings.context -
-      story.settings.maxTokens -
-      (story.connection.kind === "openrouter"
+      totalOutput(story.settings) -
+      (["openrouter", "nanogpt"].includes(story.connection.kind)
         ? estimate(taskInstructions.writing) + 12
         : 0),
   );

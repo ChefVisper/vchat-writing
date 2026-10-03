@@ -64,7 +64,7 @@ describe("provider protocol", () => {
     );
     expect(onToken).toHaveBeenCalledTimes(2);
   });
-  it("only sends supported completion parameters to OpenAI compatible servers", async () => {
+  it("sends sampling extensions to OpenAI compatible completion servers", async () => {
     let body: any;
     vi.stubGlobal(
       "fetch",
@@ -78,9 +78,11 @@ describe("provider protocol", () => {
     r.connection.kind = "openai";
     r.connection.url = "http://localhost:1234/v1";
     expect(await providers.openai.generate(r)).toBe(" prose");
-    expect(body).not.toHaveProperty("top_k");
+    expect(body).toHaveProperty("top_k", 40);
+    expect(body).toHaveProperty("min_p", 0);
+    expect(body).toHaveProperty("repetition_penalty", 1.1);
     expect(body).not.toHaveProperty("rep_pen");
-    expect(body).toHaveProperty("max_tokens", 240);
+    expect(body).toHaveProperty("max_tokens", 240 + defaults.thinkingMaxTokens);
   });
   it("uses native streaming endpoint and sampler names", async () => {
     const mock = vi.fn(async () => new Response('data: {"token":"prose"}\n\n'));
@@ -88,7 +90,7 @@ describe("provider protocol", () => {
     expect(await providers.kobold.generate(req())).toBe("prose");
     expect(mock.mock.calls[0][0]).toContain("/api/extra/generate/stream");
     const body = JSON.parse((mock.mock.calls[0] as any)[1].body);
-    expect(body.max_length).toBe(240);
+    expect(body.max_length).toBe(240 + defaults.thinkingMaxTokens);
     expect(body.rep_pen).toBe(1.1);
   });
   it("polls and collects Horde output", async () => {
@@ -219,7 +221,7 @@ describe("OpenRouter", () => {
     expect(body.messages[1]).toEqual({ role: "user", content: r.prompt });
     expect(body).not.toHaveProperty("rep_pen");
     expect(body).not.toHaveProperty("prompt");
-    expect(mock.mock.calls[0][1].signal).toBe(r.signal);
+    expect(mock.mock.calls[0][1].signal.aborted).toBe(false);
   });
   it("returns nonstreaming JSON for the note updater", async () => {
     const output = '{"updates":[]}';

@@ -84,6 +84,7 @@ describe("writing controls", () => {
     expect(buildPrompt(s).budget).toBe(
       s.settings.context -
         s.settings.maxTokens -
+        s.settings.thinkingMaxTokens -
         estimate(taskInstructions.writing) -
         12,
     );
@@ -130,6 +131,7 @@ describe("writing controls", () => {
   it("keeps selection and instructions while trimming surrounding rewrite context", () => {
     const s = newStory();
     s.settings.context = 1200;
+    s.settings.thinkingMaxTokens = 0;
     s.text =
       "Old prose. ".repeat(400) +
       "Selected passage." +

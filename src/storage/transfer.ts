@@ -43,7 +43,9 @@ export function importProject(raw: string): Story {
   )
     throw new Error("Invalid memory.");
   if (
-    !["kobold", "openai", "horde", "openrouter"].includes(s.connection?.kind) ||
+    !["kobold", "openai", "horde", "openrouter", "nanogpt"].includes(
+      s.connection?.kind,
+    ) ||
     typeof s.connection.url !== "string" ||
     typeof s.connection.model !== "string"
   )
@@ -73,7 +75,7 @@ export function importProject(raw: string): Story {
     throw new Error("Invalid note connection mode.");
   if (
     s.noteConnection &&
-    (!["kobold", "openai", "horde", "openrouter"].includes(
+    (!["kobold", "openai", "horde", "openrouter", "nanogpt"].includes(
       s.noteConnection.kind,
     ) ||
       typeof s.noteConnection.url !== "string" ||
@@ -86,6 +88,36 @@ export function importProject(raw: string): Story {
     )
   )
     throw new Error("Invalid thinking level.");
+  if (
+    s.settings.thinkingMaxTokens < 0 ||
+    s.settings.noteThinkingMaxTokens < 0 ||
+    s.settings.thinkingMaxTokens > 131072 ||
+    s.settings.noteThinkingMaxTokens > 131072 ||
+    !s.settings.thinkingPrefix.trim() ||
+    !s.settings.thinkingSuffix.trim() ||
+    s.settings.thinkingPrefix === s.settings.thinkingSuffix ||
+    s.settings.thinkingPrefix.length > 128 ||
+    s.settings.thinkingSuffix.length > 128
+  )
+    throw new Error("Invalid thinking limits or delimiters.");
+  if (
+    s.thoughts !== undefined &&
+    (!Array.isArray(s.thoughts) ||
+      !s.thoughts.every(
+        (t: any) =>
+          t &&
+          typeof t.id === "string" &&
+          Number.isFinite(t.at) &&
+          typeof t.text === "string" &&
+          typeof t.model === "string" &&
+          ["kobold", "openai", "horde", "openrouter", "nanogpt"].includes(
+            t.provider,
+          ) &&
+          ["writing", "notes", "rewrite"].includes(t.purpose) &&
+          typeof t.selected === "boolean",
+      ))
+  )
+    throw new Error("Invalid thinking history.");
   for (const n of s.notes) {
     if (
       typeof n.id !== "string" ||

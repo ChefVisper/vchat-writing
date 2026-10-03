@@ -78,7 +78,7 @@ test("independent models, output budgets, thinking and local credentials", async
   expect(notes).toHaveLength(0);
   expect(writing[0]).toMatchObject({
     model: "test/writer",
-    max_tokens: 444,
+    max_tokens: 444 + 2048,
     authorization: "Bearer writing-test-key",
     reasoning: { enabled: true, effort: "medium" },
   });
@@ -86,7 +86,7 @@ test("independent models, output budgets, thinking and local credentials", async
   await expect(page.getByRole("status")).toContainText("ready for review");
   expect(notes[0]).toMatchObject({
     model: "test/note",
-    max_tokens: 2222,
+    max_tokens: 2222 + 2048,
     authorization: "Bearer note-test-key",
     reasoning: { enabled: false },
   });

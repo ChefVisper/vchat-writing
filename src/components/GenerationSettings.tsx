@@ -49,7 +49,9 @@ export function ConnectionPanel({
                       ? "http://localhost:1234/v1"
                       : kind === "openrouter"
                         ? "https://openrouter.ai/api/v1"
-                        : "https://aihorde.net",
+                        : kind === "nanogpt"
+                          ? "https://api.nano-gpt.com/api/v1"
+                          : "https://aihorde.net",
                 model: "",
               },
             });
@@ -62,6 +64,7 @@ export function ConnectionPanel({
           <option value="openai">OpenAI-compatible completions</option>
           <option value="horde">AI Horde</option>
           <option value="openrouter">OpenRouter</option>
+          <option value="nanogpt">NanoGPT</option>
         </select>
       </Field>
       <Field
@@ -184,11 +187,13 @@ export function ConnectionPanel({
         {testing ? "Connecting…" : "Test connection"}
       </button>
       <p className="help">
-        {c.kind === "openrouter"
-          ? "Enter an OpenRouter API key and a model ID. Requests are sent to OpenRouter."
-          : c.kind === "horde"
-            ? "Horde uses a shared generation queue and returns completed text. Anonymous access is supported."
-            : "Requests go directly from your browser to this endpoint. Your server must allow this app’s origin through CORS."}
+        {c.kind === "nanogpt"
+          ? "NanoGPT uses chat completions with separate reasoning fields. Use Fetch models to select an exact model ID."
+          : c.kind === "openrouter"
+            ? "Enter an OpenRouter API key and a model ID. Requests are sent to OpenRouter."
+            : c.kind === "horde"
+              ? "Horde uses a shared generation queue and returns completed text. Anonymous access is supported."
+              : "Requests go directly from your browser to this endpoint. Your server must allow this app’s origin through CORS."}
       </p>
       <p className="help">
         Keys are saved in this browser's local storage, separately from stories.
@@ -299,10 +304,12 @@ export function GenerationSettings({
   const limits: [keyof Settings, string, number, number][] = [
     ["maxTokens", "Writing Output (tokens)", 1, 131072],
     ["noteMaxTokens", "Note Output (tokens)", 1, 131072],
+    ["thinkingMaxTokens", "Thinking Output (tokens)", 0, 131072],
+    ["noteThinkingMaxTokens", "Note Thinking Output (tokens)", 0, 131072],
     ["context", "Max context (tokens)", 256, 262144],
   ];
   const native = ["kobold", "horde"].includes(story.connection.kind);
-  const samplers = native || story.connection.kind === "openrouter";
+  const samplers = true;
   const fields: [keyof Settings, string, number, number, number][] = [
     ["temperature", "Temperature", 0, 2, 0.05],
     ["top_p", "Top P", 0, 1, 0.01],
@@ -350,8 +357,12 @@ export function GenerationSettings({
         ))}
         <p className="help">
           Max Context includes input and output. Each request reserves its own
-          output budget; older prose is trimmed first. Thinking tokens also use
-          the output budget.
+          text and thinking budgets separately; older prose is trimmed first.
+          API output is their sum, even with Thinking off, to allow for models
+          that still think. Visible text and stored thoughts have independent
+          estimated token caps. Exact reasoning limits depend on model/API
+          support. Note JSON is not locally truncated; its output limit is
+          enforced by the API and validated before applying updates.
         </p>
       </div>
 
@@ -400,6 +411,37 @@ export function GenerationSettings({
         </button>
       </div>
       <h3>Thinking</h3>
+      <Field label="Thinking prefix">
+        <input
+          maxLength={128}
+          value={s.thinkingPrefix}
+          onChange={(e) =>
+            patch({ settings: { ...s, thinkingPrefix: e.target.value } })
+          }
+        />
+      </Field>
+      <Field label="Thinking suffix">
+        <input
+          maxLength={128}
+          value={s.thinkingSuffix}
+          onChange={(e) =>
+            patch({ settings: { ...s, thinkingSuffix: e.target.value } })
+          }
+        />
+      </Field>
+      <Toggle
+        label="Server prefills thinking prefix"
+        value={s.thinkingPrefill}
+        onChange={(thinkingPrefill) =>
+          patch({ settings: { ...s, thinkingPrefill } })
+        }
+      />
+      <p className="help">
+        Default tags are &lt;think&gt; and &lt;/think&gt;. Use custom nonempty,
+        distinct tags for another model. Enable prefill only when your
+        completion server already supplies the opening tag and returns thoughts
+        before the closing tag.
+      </p>
       {([false, true] as const).map((isNote) => {
         const enabled = isNote ? "noteThinking" : "thinking";
         const level = isNote ? "noteThinkingLevel" : "thinkingLevel";
@@ -436,9 +478,12 @@ export function GenerationSettings({
         );
       })}
       <p className="help">
-        Thinking controls are sent to OpenRouter. Support depends on the model;
-        models with mandatory reasoning cannot turn it off. Native completion
-        providers use their server's thinking settings.
+        NanoGPT and OpenRouter receive reasoning controls. Some models always
+        think or never expose their thoughts. OpenRouter uses a token budget
+        where advertised; NanoGPT exposes effort control. Exposed/inline
+        thoughts are separated regardless of this switch. Native providers use
+        server reasoning settings. Generic OpenAI-compatible servers must
+        support the sampling extensions; unsupported fields may be rejected.
       </p>
       <details open className="settings-details">
         <summary>Generation settings</summary>

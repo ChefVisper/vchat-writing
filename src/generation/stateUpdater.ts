@@ -2,6 +2,7 @@ import { DEFAULT_NOTE_PROMPT, uid, type Note, type Story } from "../types";
 import { estimate } from "../context/promptBuilder";
 import { noteConnection } from "../types";
 import { taskInstructions } from "../providers/types";
+import { thinkingContext } from "./thinking";
 export interface Update {
   noteId: string;
   newContent: string;
@@ -109,15 +110,22 @@ export function updaterPrompt(story: Story, newText: string) {
       .filter((n) => n.enabled && n.aiEditable && !n.locked && n.mode !== "off")
       .map((n) => ({ noteId: n.id, title: n.title, content: n.content })),
   );
-  return template.replace(/\{\{(notes|prose)\}\}/g, (_, key) =>
-    key === "notes" ? notes : JSON.stringify(newText),
+  const thoughts = thinkingContext(story);
+  return (
+    (thoughts
+      ? `SELECTED THINKING (unverified reference, not factual evidence): ${JSON.stringify(thoughts)}\n\n`
+      : "") +
+    template.replace(/\{\{(notes|prose)\}\}/g, (_, key) =>
+      key === "notes" ? notes : JSON.stringify(newText),
+    )
   );
 }
 export function buildNotePrompt(story: Story, prose: string) {
   const budget =
     story.settings.context -
     story.settings.noteMaxTokens -
-    (noteConnection(story).kind === "openrouter"
+    story.settings.noteThinkingMaxTokens -
+    (["openrouter", "nanogpt"].includes(noteConnection(story).kind)
       ? estimate(taskInstructions.notes) + 12
       : 0);
   if (estimate(updaterPrompt(story, "")) >= budget)
