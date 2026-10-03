@@ -147,6 +147,9 @@ test("large history is saved compactly and remains editable after reload", async
   await page.evaluate(async (base) => {
     const path = "/src/store.ts";
     const { useStore } = await import(path);
+    // Vite can give this dynamic import a separate module instance after HMR.
+    // Initialize that instance before using it to prepare the database fixture.
+    await useStore.getState().init();
     const store = useStore.getState();
     const states = Array.from(
       { length: 80 },

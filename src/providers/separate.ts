@@ -9,6 +9,14 @@ export function separate(provider: Provider): Provider {
   return {
     ...provider,
     async generate(r: Request) {
+      if (
+        r.images?.length &&
+        !["openrouter", "nanogpt"].includes(r.connection.kind)
+      )
+        throw new Error(
+          "Image input needs a vision model on NanoGPT or OpenRouter. Remove the image to use this provider with text.",
+        );
+      const structured = r.purpose === "notes" || r.purpose === "create";
       const controller = new AbortController();
       const abort = () => controller.abort(r.signal.reason);
       r.signal.addEventListener("abort", abort, { once: true });
@@ -30,16 +38,15 @@ export function separate(provider: Provider): Provider {
       const splitter = new ThinkingSplitter(
         r.settings,
         (text) => {
-          // Never truncate structured note JSON with a prose token estimate.
-          const next =
-            r.purpose === "notes"
-              ? output + text
-              : fitTokens(output + text, r.settings.maxTokens);
+          // Never truncate structured note/creation JSON with a prose token estimate.
+          const next = structured
+            ? output + text
+            : fitTokens(output + text, r.settings.maxTokens);
           const delta = next.slice(output.length);
           output = next;
           if (delta) r.onToken(delta);
           if (
-            r.purpose !== "notes" &&
+            !structured &&
             (delta.length < text.length ||
               tokenEstimate(output) >= r.settings.maxTokens)
           )

@@ -1027,3 +1027,72 @@ summary svg {
 .focus-mode .next-instruction {
   display: none;
 }
+
+.create-workspace {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+.create-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.create-heading h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.create-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  max-width: 1250px;
+  margin: auto;
+}
+.create-grid > section {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+}
+.create-workspace textarea {
+  width: 100%;
+  resize: vertical;
+}
+.create-image {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.create-image img {
+  width: 100px;
+  height: 120px;
+  object-fit: contain;
+  background: var(--card);
+}
+.create-thoughts {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+  font: inherit;
+}
+.create-actions {
+  margin-top: 12px;
+}
+@media (max-width: 700px) {
+  .create-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .create-workspace {
+    padding: 10px;
+  }
+  .main-nav {
+    flex-wrap: wrap;
+  }
+}

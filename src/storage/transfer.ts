@@ -120,7 +120,7 @@ export function importProject(raw: string): Story {
           ["kobold", "openai", "horde", "openrouter", "nanogpt"].includes(
             t.provider,
           ) &&
-          ["writing", "notes", "rewrite"].includes(t.purpose) &&
+          ["writing", "notes", "rewrite", "create"].includes(t.purpose) &&
           typeof t.selected === "boolean",
       ))
   )

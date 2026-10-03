@@ -118,7 +118,7 @@ export interface Thought {
   at: number;
   model: string;
   provider: Connection["kind"];
-  purpose: "writing" | "notes" | "rewrite";
+  purpose: "writing" | "notes" | "rewrite" | "create";
   text: string;
   selected: boolean;
 }

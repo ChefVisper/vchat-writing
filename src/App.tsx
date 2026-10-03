@@ -75,6 +75,7 @@ import {
 } from "./components/GenerationSettings";
 import { PromptInspector } from "./components/PromptInspector";
 import { ThinkingPanel } from "./components/ThinkingPanel";
+import { CreateWorkspace } from "./components/CreateWorkspace";
 import {
   ManuscriptEditor,
   type ManuscriptHandle,
@@ -94,6 +95,8 @@ export default function App() {
   const { patch } = store;
   const story = store.stories.find((x) => x.id === store.current);
   const [library, setLibrary] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
   const [panel, setPanel] = useState<string | null>(null);
   const [instructionOpen, setInstructionOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -638,6 +641,7 @@ export default function App() {
   }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (creating) return;
       if (e.key === "Escape") {
         if (busy) stop();
         else {
@@ -681,7 +685,7 @@ export default function App() {
     );
   return (
     <div
-      className={`app ${focus ? "focus-mode" : ""} ${panel ? "has-panel" : ""}`}
+      className={`app ${focus && !creating ? "focus-mode" : ""} ${panel && !creating ? "has-panel" : ""}`}
     >
       <input
         type="file"
@@ -696,19 +700,28 @@ export default function App() {
       <header className="topbar">
         <nav className="main-nav" aria-label="Main navigation">
           <button
+            disabled={createBusy}
             onClick={() => {
+              setCreating(false);
               setLibrary(false);
               setPanel("connection");
             }}
           >
             AI
           </button>
-          <button disabled={busy} onClick={() => setLibrary(!library)}>
+          <button
+            disabled={busy || createBusy}
+            onClick={() => {
+              setCreating(false);
+              setLibrary(!library);
+            }}
+          >
             My stories
           </button>
           <button
-            disabled={busy}
+            disabled={busy || createBusy}
             onClick={() => {
+              setCreating(false);
               store.add();
               setLibrary(false);
             }}
@@ -716,7 +729,20 @@ export default function App() {
             New
           </button>
           <button
+            disabled={busy || createBusy}
+            className={creating ? "active" : ""}
             onClick={() => {
+              setCreating(true);
+              setLibrary(false);
+              setPanel(null);
+            }}
+          >
+            Create
+          </button>
+          <button
+            disabled={createBusy}
+            onClick={() => {
+              setCreating(false);
               setLibrary(false);
               setPanel("history");
             }}
@@ -724,7 +750,7 @@ export default function App() {
             Save / Load
           </button>
         </nav>
-        {!library && (
+        {!library && !creating && (
           <input
             className="document-name"
             aria-label="Story title"
@@ -743,7 +769,9 @@ export default function App() {
           </span>
           <button
             className="connection-pill"
+            disabled={createBusy}
             onClick={() => {
+              setCreating(false);
               setLibrary(false);
               setPanel("connection");
             }}
@@ -798,7 +826,20 @@ export default function App() {
           </button>
         </div>
       )}
-      {library ? (
+      {creating ? (
+        <CreateWorkspace
+          source={story}
+          keys={keys}
+          setCredential={setCredential}
+          onBusy={setCreateBusy}
+          onClose={() => setCreating(false)}
+          onCreate={(s) => {
+            store.add(s);
+            setCreating(false);
+            setNotice("Story created. Memory and opening are ready to edit.");
+          }}
+        />
+      ) : library ? (
         <main className="library">
           <div className="library-heading">
             <div>

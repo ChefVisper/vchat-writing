@@ -4,6 +4,7 @@ import {
   stream,
   taskInstructions,
   reasoningText,
+  chatContent,
   type Provider,
 } from "./types";
 import { totalOutput } from "../generation/thinking";
@@ -11,6 +12,7 @@ const modelOptions = new Map<
   string,
   {
     supported_parameters?: string[];
+    architecture?: { input_modalities?: string[] };
     reasoning?: {
       mandatory?: boolean;
       supported_efforts?: string[];
@@ -57,6 +59,14 @@ export const openrouter: Provider = {
     );
     const supportedEfforts = options?.reasoning?.supported_efforts;
     if (
+      r.images?.length &&
+      options?.architecture?.input_modalities &&
+      !options.architecture.input_modalities.includes("image")
+    )
+      throw new Error(
+        "This model does not accept images. Choose a vision model or remove the reference image.",
+      );
+    if (
       s.thinking &&
       !options?.reasoning?.supports_max_tokens &&
       supportedEfforts?.length &&
@@ -76,7 +86,7 @@ export const openrouter: Provider = {
             role: "system",
             content: taskInstructions[r.purpose ?? "writing"],
           },
-          { role: "user", content: r.prompt },
+          { role: "user", content: chatContent(r) },
         ],
         max_tokens: totalOutput(s),
         temperature: s.temperature,
@@ -117,7 +127,7 @@ export const openrouter: Provider = {
                 }
             : { enabled: false, exclude: false },
         response_format:
-          r.purpose === "notes" &&
+          (r.purpose === "notes" || r.purpose === "create") &&
           options?.supported_parameters?.includes("response_format")
             ? { type: "json_object" }
             : undefined,
@@ -158,9 +168,14 @@ export const openrouter: Provider = {
     const text = data.choices?.[0]?.message?.content;
     const thoughts = reasoningText(data.choices?.[0]?.message);
     if (thoughts) r.onReasoning?.(thoughts);
-    if (r.purpose === "notes" && data.choices?.[0]?.finish_reason === "length")
+    if (
+      (r.purpose === "notes" || r.purpose === "create") &&
+      data.choices?.[0]?.finish_reason === "length"
+    )
       throw new Error(
-        "Note output was cut off. Increase Note Output or lower Note Thinking. No notes were changed.",
+        r.purpose === "create"
+          ? "Creation was cut off. Increase Create Output or reduce thinking. Your previous result was kept."
+          : "Note output was cut off. Increase Note Output or lower Note Thinking. No notes were changed.",
       );
     if (typeof text !== "string" || !text.trim())
       throw new Error(

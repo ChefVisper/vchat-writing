@@ -5,6 +5,7 @@ import {
   reasoningText,
   stream,
   taskInstructions,
+  chatContent,
   type Provider,
 } from "./types";
 import { totalOutput } from "../generation/thinking";
@@ -40,6 +41,15 @@ export const nanogpt: Provider = {
       throw new Error("Enter your NanoGPT API key and model in Connection.");
     const s = r.settings,
       model = catalog.get(`${base(r.connection)}/${r.connection.model}`);
+    if (
+      r.images?.length &&
+      ((Array.isArray(model?.architecture?.input_modalities) &&
+        !model.architecture.input_modalities.includes("image")) ||
+        model?.capabilities?.vision === false)
+    )
+      throw new Error(
+        "This model does not accept images. Choose a vision model or remove the reference image.",
+      );
     const supported = (name: string) =>
       !Array.isArray(model?.supported_parameters) ||
       model.supported_parameters.includes(name);
@@ -54,7 +64,7 @@ export const nanogpt: Provider = {
         model: r.connection.model,
         messages: [
           { role: "system", content: taskInstructions[r.purpose ?? "writing"] },
-          { role: "user", content: r.prompt },
+          { role: "user", content: chatContent(r) },
         ],
         max_tokens: totalOutput(s),
         temperature: s.temperature,
@@ -103,9 +113,14 @@ export const nanogpt: Provider = {
       choice = data.choices?.[0];
     const thought = reasoningText(choice?.message);
     if (thought) r.onReasoning?.(thought);
-    if (r.purpose === "notes" && choice?.finish_reason === "length")
+    if (
+      (r.purpose === "notes" || r.purpose === "create") &&
+      choice?.finish_reason === "length"
+    )
       throw new Error(
-        "Note output was cut off. Increase Note Output or reduce thinking. No notes changed.",
+        r.purpose === "create"
+          ? "Creation was cut off. Increase Create Output or reduce thinking. Your previous result was kept."
+          : "Note output was cut off. Increase Note Output or reduce thinking. No notes changed.",
       );
     const text = choice?.message?.content;
     if (typeof text !== "string")
