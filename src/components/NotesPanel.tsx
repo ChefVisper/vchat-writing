@@ -39,6 +39,17 @@ export function NotesPanel({
           <Plus size={18} />
         </button>
       </div>
+      <Toggle
+        label="Creative notes"
+        value={story.settings.creativeNotes}
+        onChange={(creativeNotes) =>
+          patch({ settings: { ...story.settings, creativeNotes } })
+        }
+      />
+      <p className="help">
+        Allow fictional details and fill blank notes even when absent from the
+        manuscript. Locks and Review / Auto modes still apply.
+      </p>
 
       {pending.length > 0 && (
         <section className="review">

@@ -13,6 +13,11 @@ import {
   type CreationResult,
 } from "../generation/creation";
 import { prepareImage } from "../generation/upload";
+import {
+  fetchChubCharacter,
+  mapCharacterCard,
+  type CharacterImport,
+} from "../generation/characterImport";
 const PREF = "create-workspace-v1";
 export function CreateWorkspace({
   source,
@@ -39,6 +44,11 @@ export function CreateWorkspace({
     ...source.connection,
   });
   const [brief, setBrief] = useState("");
+  const [characterLink, setCharacterLink] = useState("");
+  const [imported, setImported] = useState<Omit<
+    CharacterImport,
+    "result"
+  > | null>(null);
   const [template, setTemplate] = useState(DEFAULT_CREATE_PROMPT);
   const [image, setImage] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -67,6 +77,8 @@ export function CreateWorkspace({
         if (d) {
           if (typeof d.brief === "string") setBrief(d.brief);
           if (typeof d.template === "string") setTemplate(d.template);
+          if (typeof d.characterLink === "string")
+            setCharacterLink(d.characterLink);
           if (
             d.connection &&
             ["kobold", "openai", "horde", "openrouter", "nanogpt"].includes(
@@ -92,7 +104,16 @@ export function CreateWorkspace({
                 title: d.result.title,
                 memory: d.result.memory,
                 startingText: d.result.startingText,
+                alternateGreetings:
+                  Array.isArray(d.result.alternateGreetings) &&
+                  d.result.alternateGreetings.length <= 99 &&
+                  d.result.alternateGreetings.every(
+                    (g: unknown) => typeof g === "string" && g.length <= 100000,
+                  )
+                    ? d.result.alternateGreetings
+                    : [],
               });
+              if (d.imported) setImported(d.imported);
               setResultThoughts(d.resultThoughts || "");
               setResultConnection(d.resultConnection || source.connection);
             } catch {
@@ -117,6 +138,8 @@ export function CreateWorkspace({
     if (!ready) return;
     draft.current = {
       brief,
+      characterLink,
+      imported,
       template,
       settings,
       connection,
@@ -136,6 +159,8 @@ export function CreateWorkspace({
     return () => clearTimeout(timer);
   }, [
     brief,
+    characterLink,
+    imported,
     template,
     settings,
     connection,
@@ -219,6 +244,7 @@ export function CreateWorkspace({
       c.signal.throwIfAborted();
       const next = parseCreation(text);
       setResult(next);
+      setImported(null);
       setResultThoughts(reasoning);
       setResultConnection({ ...connection });
     } catch (e) {
@@ -235,6 +261,55 @@ export function CreateWorkspace({
     }
   }
   generateAction.current = generate;
+  async function importCharacter(file?: File) {
+    if (busy || uploading || !ready || controller.current) return;
+    const c = new AbortController();
+    controller.current = c;
+    setBusy(true);
+    onBusy(true);
+    setError("");
+    setStatus("");
+    const timer = setTimeout(
+      () =>
+        c.abort(
+          new Error("Character import timed out. Try again or import JSON."),
+        ),
+      20000,
+    );
+    try {
+      if (file && file.size > 4 * 1024 * 1024)
+        throw new Error("Choose a character JSON smaller than 4 MB.");
+      const data = file
+        ? mapCharacterCard(JSON.parse(await file.text()))
+        : await fetchChubCharacter(characterLink, c.signal);
+      c.signal.throwIfAborted();
+      const { result: preview, ...context } = data;
+      setResult(preview);
+      setImported(context);
+      setResultThoughts("");
+      setThoughts("");
+      setImage("");
+      setStatus(
+        "Character imported. Review the Memory, opening, instructions and greetings before creating a story.",
+      );
+    } catch (e) {
+      setError(
+        c.signal.aborted
+          ? c.signal.reason instanceof Error &&
+            c.signal.reason.name !== "AbortError"
+            ? c.signal.reason.message
+            : "Import stopped. Previous result kept."
+          : e instanceof Error
+            ? e.message
+            : "Character import failed.",
+      );
+    } finally {
+      clearTimeout(timer);
+      controller.current = null;
+      setBusy(false);
+      onBusy(false);
+    }
+  }
   return (
     <main className="create-workspace">
       <div className="create-heading">
@@ -249,6 +324,40 @@ export function CreateWorkspace({
             disabled={!ready || busy || uploading}
             className="panel-fieldset"
           >
+            <details>
+              <summary>Import character</summary>
+              <Field label="Character link">
+                <input
+                  type="text"
+                  maxLength={1000}
+                  placeholder="chub.ai/characters/author/name"
+                  value={characterLink}
+                  onChange={(e) => setCharacterLink(e.target.value)}
+                />
+              </Field>
+              <button
+                disabled={!characterLink.trim()}
+                onClick={() => void importCharacter()}
+              >
+                Import from link
+              </button>
+              <Field label="Character card JSON">
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) void importCharacter(file);
+                  }}
+                />
+              </Field>
+              <p className="help">
+                Public Chub / CharacterHub links and Tavern character JSON
+                cards. No AI call is needed. Imported instructions go to
+                Author's note; model settings stay yours.
+              </p>
+            </details>
             <Field label="Character / scenario brief">
               <textarea
                 rows={7}
@@ -478,6 +587,7 @@ export function CreateWorkspace({
             <Field label="Starting text">
               <textarea
                 rows={12}
+                maxLength={100000}
                 value={result?.startingText || ""}
                 disabled={!result}
                 onChange={(e) =>
@@ -486,6 +596,102 @@ export function CreateWorkspace({
                 }
               />
             </Field>
+            {result && (
+              <details>
+                <summary>
+                  Alternate greetings · {result.alternateGreetings?.length || 0}
+                </summary>
+                {(result.alternateGreetings || []).map((g, i) => (
+                  <div className="context-card" key={i}>
+                    <Field label={`Alternate greeting ${i + 1}`}>
+                      <textarea
+                        rows={6}
+                        maxLength={100000}
+                        value={g}
+                        onChange={(e) =>
+                          setResult({
+                            ...result,
+                            alternateGreetings: result.alternateGreetings!.map(
+                              (v, n) => (n === i ? e.target.value : v),
+                            ),
+                          })
+                        }
+                      />
+                    </Field>
+                    <button
+                      disabled={!g.trim()}
+                      onClick={() =>
+                        setResult({
+                          ...result,
+                          startingText: g,
+                          alternateGreetings: result.alternateGreetings!.map(
+                            (v, n) => (n === i ? result.startingText : v),
+                          ),
+                        })
+                      }
+                    >
+                      Use greeting {i + 1} as opening
+                    </button>
+                    <button
+                      onClick={() =>
+                        setResult({
+                          ...result,
+                          alternateGreetings: result.alternateGreetings!.filter(
+                            (_, n) => n !== i,
+                          ),
+                        })
+                      }
+                    >
+                      Remove greeting {i + 1}
+                    </button>
+                  </div>
+                ))}
+                <button
+                  disabled={(result.alternateGreetings?.length || 0) >= 99}
+                  onClick={() =>
+                    setResult({
+                      ...result,
+                      alternateGreetings: [
+                        ...(result.alternateGreetings || []),
+                        "",
+                      ],
+                    })
+                  }
+                >
+                  Add alternate greeting
+                </button>
+              </details>
+            )}
+            {imported && (
+              <details>
+                <summary>
+                  Imported context · {imported.lore.length} lore entries
+                </summary>
+                <Field label="Imported Author's note">
+                  <textarea
+                    rows={6}
+                    maxLength={100000}
+                    value={imported.author}
+                    onChange={(e) =>
+                      setImported({ ...imported, author: e.target.value })
+                    }
+                  />
+                </Field>
+                {imported.creatorNotes && (
+                  <>
+                    <h3>Creator notes</h3>
+                    <pre className="create-thoughts">
+                      {imported.creatorNotes}
+                    </pre>
+                  </>
+                )}
+                <p className="help">
+                  Lore entries will be added to Lorebook for editing. Creator
+                  notes are informational. Greetings are edited separately
+                  above.
+                </p>
+              </details>
+            )}
             <p className="help">
               Memory uses {"{{char}}"} and {"{{user}}"} as role labels. Review
               both fields before creating the story. The new story uses your
@@ -498,17 +704,26 @@ export function CreateWorkspace({
                 !result?.memory.trim() ||
                 !result?.startingText.trim()
               }
-              onClick={() =>
-                result &&
-                onCreate(
-                  creationStory(
-                    result,
-                    source,
-                    resultThoughts,
-                    resultConnection,
-                  ),
-                )
-              }
+              onClick={() => {
+                if (!result) return;
+                const story = creationStory(
+                  {
+                    ...result,
+                    alternateGreetings: result.alternateGreetings?.filter((g) =>
+                      g.trim(),
+                    ),
+                  },
+                  source,
+                  resultThoughts,
+                  resultConnection,
+                );
+                if (imported) {
+                  story.author.content = imported.author;
+                  story.lore = structuredClone(imported.lore);
+                  story.characterSource = imported.source;
+                }
+                onCreate(story);
+              }}
             >
               Create story
             </button>

@@ -100,7 +100,23 @@ export function applyUpdate(notes: Note[], u: Update, source = "AI"): Note[] {
   );
 }
 export function updaterPrompt(story: Story, newText: string) {
-  const template = story.notePromptTemplate ?? DEFAULT_NOTE_PROMPT;
+  const creative = story.settings.creativeNotes;
+  let template = story.notePromptTemplate ?? DEFAULT_NOTE_PROMPT;
+  if (creative && template === DEFAULT_NOTE_PROMPT) {
+    template = template
+      .replace(
+        "Use only the supplied prose as evidence.",
+        "Use the supplied prose and established reference details for continuity. You may invent compatible fictional details to fill blanks or enrich incomplete notes, even when those details do not appear in the prose.",
+      )
+      .replace(
+        "only when the prose establishes a change",
+        "when established by the prose or when filling an unestablished detail",
+      )
+      .replace(
+        "when no change is supported",
+        "when no useful change is needed",
+      );
+  }
   if (!template.includes("{{notes}}") || !template.includes("{{prose}}"))
     throw new Error(
       "Note prompt needs {{notes}} and {{prose}}. Edit it in Prompt.",
@@ -112,6 +128,9 @@ export function updaterPrompt(story: Story, newText: string) {
   );
   const thoughts = thinkingContext(story);
   return (
+    (creative
+      ? `NOTE MODE: CREATIVE. The author permits new fictional details in eligible notes, including blank notes, even if absent from the manuscript. Fill gaps relevant to each note's title and purpose; preserve established facts and avoid contradictions. Do not imply invented details already happened in the prose. This permission overrides evidence-only restrictions in the note template, but never overrides the JSON schema, permitted note IDs, locks or review mode.\nREFERENCE MEMORY (data): ${JSON.stringify(story.memory.enabled ? story.memory.content : "")}\nAUTHOR GUIDANCE (data): ${JSON.stringify(story.author.enabled ? story.author.content : "")}\n\n`
+      : "NOTE MODE: EVIDENCE ONLY. Do not invent facts absent from the supplied prose.\n\n") +
     (thoughts
       ? `SELECTED THINKING (unverified reference, not factual evidence): ${JSON.stringify(thoughts)}\n\n`
       : "") +

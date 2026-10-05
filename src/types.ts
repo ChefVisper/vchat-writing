@@ -52,6 +52,7 @@ export interface Settings {
   thinking: boolean;
   thinkingLevel: "minimal" | "low" | "medium" | "high";
   noteThinking: boolean;
+  creativeNotes: boolean;
   noteThinkingLevel: "minimal" | "low" | "medium" | "high";
   context: number;
   seed: number;
@@ -112,6 +113,13 @@ export interface Story {
   thoughts?: Thought[];
   nextInstruction?: string;
   keepInstruction?: boolean;
+  greetings?: Greeting[];
+  characterSource?: string;
+}
+export interface Greeting {
+  id: string;
+  title: string;
+  text: string;
 }
 export interface Thought {
   id: string;
@@ -145,6 +153,7 @@ export const defaults: Settings = {
   thinking: false,
   thinkingLevel: "low",
   noteThinking: false,
+  creativeNotes: false,
   noteThinkingLevel: "low",
   context: 8192,
   seed: -1,

@@ -76,11 +76,13 @@ import {
 import { PromptInspector } from "./components/PromptInspector";
 import { ThinkingPanel } from "./components/ThinkingPanel";
 import { CreateWorkspace } from "./components/CreateWorkspace";
+import { GreetingsPanel } from "./components/GreetingsPanel";
 import {
   ManuscriptEditor,
   type ManuscriptHandle,
 } from "./components/ManuscriptEditor";
 const tabs = [
+  { id: "greetings", label: "Greetings", icon: MessageSquarePlus },
   { id: "thinking", label: "Thinking", icon: Brain },
   { id: "notes", label: "Notebook", icon: NotebookPen },
   { id: "context", label: "Memory", icon: Layers },
@@ -394,7 +396,7 @@ export default function App() {
       !force && now.lastUpdateText && now.text.startsWith(now.lastUpdateText)
         ? now.text.slice(now.lastUpdateText.length)
         : now.text;
-    if (!prose.trim()) {
+    if (!prose.trim() && !now.settings.creativeNotes) {
       setNotice("Notes are already up to date; no new prose to check.");
       return;
     }
@@ -411,7 +413,9 @@ export default function App() {
         signal: c.signal,
         settings: {
           ...now.settings,
-          temperature: 0.1,
+          temperature: now.settings.creativeNotes
+            ? now.settings.temperature
+            : 0.1,
           maxTokens: now.settings.noteMaxTokens,
           thinking: now.settings.noteThinking,
           thinkingLevel: now.settings.noteThinkingLevel,
@@ -1267,6 +1271,18 @@ export default function App() {
                           pending={pending}
                           accept={accept}
                           reject={() => setPending([])}
+                        />
+                      )}
+                      {panel === "greetings" && (
+                        <GreetingsPanel
+                          story={story}
+                          patch={patch}
+                          busy={busy}
+                          onStart={(s) => {
+                            store.add(s);
+                            setPanel(null);
+                            setNotice("New story started with this greeting.");
+                          }}
                         />
                       )}
                       {panel === "context" && (

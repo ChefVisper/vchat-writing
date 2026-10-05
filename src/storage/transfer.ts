@@ -28,6 +28,27 @@ export function importProject(raw: string): Story {
   const s = d.version === 2 ? unpackStory(d) : d.story;
   const base = newStory();
   if (
+    s.characterSource !== undefined &&
+    (typeof s.characterSource !== "string" || s.characterSource.length > 1000)
+  )
+    throw new Error("Invalid character source.");
+  if (
+    s.greetings !== undefined &&
+    (!Array.isArray(s.greetings) ||
+      s.greetings.length > 100 ||
+      !s.greetings.every(
+        (g: any) =>
+          g &&
+          typeof g.id === "string" &&
+          typeof g.title === "string" &&
+          g.title.length <= 150 &&
+          typeof g.text === "string" &&
+          g.text.length <= 100000,
+      ) ||
+      new Set(s.greetings.map((g: any) => g.id)).size !== s.greetings.length)
+  )
+    throw new Error("Invalid greetings.");
+  if (
     (s.nextInstruction !== undefined &&
       (typeof s.nextInstruction !== "string" ||
         s.nextInstruction.length > 5000)) ||

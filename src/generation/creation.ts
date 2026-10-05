@@ -8,6 +8,7 @@ import {
 import { estimate } from "../context/promptBuilder";
 import { totalOutput } from "./thinking";
 import { taskInstructions } from "../providers/types";
+import { newGreeting } from "./greetings";
 export const DEFAULT_CREATE_PROMPT = `Create a fictional character, scenario and opening passage from the author's brief and optional image.
 Return exactly {"title":"short title","memory":"reusable continuity memory","startingText":"opening passage"} as complete valid JSON.
 Memory: use {{char}} for the character and {{user}} for the reader's role. Include identity/name, appearance, personality, motivations, relationship history, setting and current situation when relevant. Prioritize supplied details; fill gaps with coherent fictional details. An image supplies visible appearance only, not personality, age, exact height or relationship history. Do not present invented measurements as observed facts.
@@ -16,6 +17,7 @@ export interface CreationResult {
   title: string;
   memory: string;
   startingText: string;
+  alternateGreetings?: string[];
 }
 export function creationPrompt(
   brief: string,
@@ -95,6 +97,9 @@ export function creationStory(
     title: result.title,
     text: result.startingText,
     memory: { ...s.memory, content: result.memory },
+    greetings: [result.startingText, ...(result.alternateGreetings || [])].map(
+      (text, i) => newGreeting(text, `Greeting ${i + 1}`),
+    ),
     connection: { ...source.connection },
     settings: { ...source.settings },
     promptTemplate: source.promptTemplate,
