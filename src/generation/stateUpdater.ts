@@ -3,6 +3,7 @@ import { estimate } from "../context/promptBuilder";
 import { noteConnection } from "../types";
 import { taskInstructions } from "../providers/types";
 import { thinkingContext } from "./thinking";
+import { WRITERS_BLOCK_NOTE_GUIDANCE } from "../presets/writersBlock";
 export interface Update {
   noteId: string;
   newContent: string;
@@ -143,6 +144,9 @@ export function updaterPrompt(story: Story, newText: string) {
   );
   const thoughts = thinkingContext(story);
   return (
+    (story.writingPreset === "writers-block"
+      ? WRITERS_BLOCK_NOTE_GUIDANCE
+      : "") +
     (creative
       ? `NOTE MODE: PER NOTE. The author permits new fictional details ONLY in notes marked creative=true in NOTES, including blank notes, even if absent from the manuscript. For every note marked creative=false, use only prose evidence; never transfer creative permission from another note. Fill gaps relevant to the creative note's title and purpose; preserve established facts and avoid contradictions. Do not imply invented details already happened in the prose. For creative=true notes only, this permission overrides evidence-only restrictions in the note template, but never overrides the JSON schema, permitted note IDs, locks or review mode.\nREFERENCE MEMORY (data): ${JSON.stringify(story.memory.enabled ? story.memory.content : "")}\nAUTHOR GUIDANCE (data): ${JSON.stringify(story.author.enabled ? story.author.content : "")}\n\n`
       : "NOTE MODE: EVIDENCE ONLY. Do not invent facts absent from the supplied prose.\n\n") +

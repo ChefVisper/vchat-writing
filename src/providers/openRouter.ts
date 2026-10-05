@@ -2,7 +2,7 @@ import {
   base,
   headers,
   stream,
-  taskInstructions,
+  taskInstruction,
   reasoningText,
   chatContent,
   type Provider,
@@ -84,7 +84,7 @@ export const openrouter: Provider = {
         messages: [
           {
             role: "system",
-            content: taskInstructions[r.purpose ?? "writing"],
+            content: taskInstruction(r.purpose, r.writingPreset),
           },
           { role: "user", content: chatContent(r) },
         ],

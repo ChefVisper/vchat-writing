@@ -1,3 +1,4 @@
+import type { WritingPreset, WriterBlockConfig } from "./presets/writersBlock";
 export type Position = "before" | "after";
 export interface ContextText {
   content: string;
@@ -100,6 +101,9 @@ export interface Story {
   loreBudget: number;
   settings: Settings;
   promptTemplate?: string;
+  writingPreset?: WritingPreset;
+  writersBlock?: WriterBlockConfig;
+  writersBlockTemplate?: string;
   connection: Connection;
   noteConnectionMode?: "same" | "model" | "separate";
   noteConnection?: Connection;
@@ -315,6 +319,7 @@ export function newStory(sample = false): Story {
     loreBudget: 1000,
     settings: { ...defaults },
     promptTemplate: DEFAULT_PROMPT_TEMPLATE,
+    writingPreset: "default",
     connection: { kind: "kobold", url: "http://localhost:5001", model: "" },
     segments: [],
     snapshots: [],

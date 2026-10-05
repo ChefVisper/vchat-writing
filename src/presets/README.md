@@ -1,0 +1,11 @@
+# Writer's Block for co-writing
+
+The built-in Writer's Block profile adapts selected modules from [Writer's Block Unlimited V2 by deiomo](https://github.com/deiomo/Writer-s-Block-Unlimited). The upstream [MIT license](https://github.com/deiomo/Writer-s-Block-Unlimited/blob/main/LICENSE) is retained in `writers-block.LICENSE` and displayed in Settings.
+
+Source inspected: `Writer's Block Unlimited Version 2 (1).json`, SHA256 `95adb346a3bac896db91f2de69b07c12c0ad30c2e155556ab0fb641e863b8e1d`. No remote download is needed at runtime.
+
+`writersBlock.ts` is a deliberately smaller, rewritten catalogue: narrative momentum, POV, relative length, tone/volatility, vocabulary, paragraph density, sentence rhythm, imagery, narrative distance, show/tell, dialogue frequency/naturalism/depth, character resistance and trait expression. Its seven independent modules adapt Universal Character Behavior and Subtext, Universal Dialogue Rules, Anti-Omniscience, Anti-Resolution, Anti-Slop, Side Characters and World Enrichment. Tone combinations are limited to six. A short continuity check uses the existing reasoning feature only when enabled.
+
+This is a document continuation profile, not a complete SillyTavern preset importer. Chat turns/role macros, random/dice macros, extension regexes, chat-specific hard stops, forced paragraph minima and inline trackers are not executed. The author remains the director; the model can write every fictional character. Visible output budgets and complete final sentences take precedence over relative length/rhythm controls. Author scene/editing directions take priority over style defaults. Optional scene, plot and character tracking uses vChat's existing per-note JSON/review/creative workflow.
+
+The Default profile uses the existing prompt unchanged. Its custom prompt is independent of Writer's Block's editable template and module choices. Switching profiles changes neither manuscript/context nor provider, model, sampling or output budgets. Generation presets below the token limits still save sampling/budget settings separately. Active selection, options and both templates are stored with the story and included in project export, branches and greetings. A new blank story starts on Default.

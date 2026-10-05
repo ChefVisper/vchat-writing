@@ -22,6 +22,7 @@ export const storage = {
             : stored;
         return upgradeNoteCreativity({
           ...story,
+          writingPreset: story.writingPreset ?? "default",
           promptTemplate: upgradePromptTemplate(story.promptTemplate),
           settings: {
             ...defaults,

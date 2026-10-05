@@ -103,6 +103,11 @@ export function creationStory(
     connection: { ...source.connection },
     settings: { ...source.settings },
     promptTemplate: source.promptTemplate,
+    writingPreset: source.writingPreset ?? "default",
+    writersBlock: source.writersBlock
+      ? structuredClone(source.writersBlock)
+      : undefined,
+    writersBlockTemplate: source.writersBlockTemplate,
     notePromptTemplate: source.notePromptTemplate,
     noteConnectionMode: source.noteConnectionMode,
     noteConnection: source.noteConnection

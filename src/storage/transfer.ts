@@ -5,6 +5,7 @@ import {
   type Story,
 } from "../types";
 import { packStory, unpackStory } from "./compact";
+import { isWriterBlockConfig } from "../presets/writersBlock";
 export function exportProject(s: Story) {
   s = upgradeNoteCreativity(s);
   return JSON.stringify({
@@ -33,6 +34,15 @@ export function importProject(raw: string): Story {
     throw new Error("This is not a supported Margin project.");
   const s = d.version === 2 ? unpackStory(d) : d.story;
   const base = newStory();
+  if (
+    (s.writingPreset !== undefined &&
+      !["default", "writers-block"].includes(s.writingPreset)) ||
+    (s.writersBlock !== undefined && !isWriterBlockConfig(s.writersBlock)) ||
+    (s.writersBlockTemplate !== undefined &&
+      (typeof s.writersBlockTemplate !== "string" ||
+        s.writersBlockTemplate.length > 20000))
+  )
+    throw new Error("Invalid writing preset or Writer's Block configuration.");
   if (
     s.settings?.creativeNotes !== undefined &&
     typeof s.settings.creativeNotes !== "boolean"
@@ -269,6 +279,7 @@ export function importProject(raw: string): Story {
   return upgradeNoteCreativity({
     ...base,
     ...s,
+    writingPreset: s.writingPreset ?? "default",
     noteConnection: s.noteConnection
       ? {
           kind: s.noteConnection.kind,

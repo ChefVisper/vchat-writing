@@ -528,6 +528,7 @@ export default function App() {
           connection: s.connection,
           key: apiKey,
           purpose: "writing",
+          writingPreset: s.writingPreset,
           onReasoning: thoughts.onReasoning,
           signal: c.signal,
           onToken: (token) => {

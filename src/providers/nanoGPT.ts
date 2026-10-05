@@ -4,7 +4,7 @@ import {
   json,
   reasoningText,
   stream,
-  taskInstructions,
+  taskInstruction,
   chatContent,
   type Provider,
 } from "./types";
@@ -63,7 +63,10 @@ export const nanogpt: Provider = {
       body: JSON.stringify({
         model: r.connection.model,
         messages: [
-          { role: "system", content: taskInstructions[r.purpose ?? "writing"] },
+          {
+            role: "system",
+            content: taskInstruction(r.purpose, r.writingPreset),
+          },
           { role: "user", content: chatContent(r) },
         ],
         max_tokens: totalOutput(s),

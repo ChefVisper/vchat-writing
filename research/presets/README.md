@@ -1,6 +1,6 @@
 # Preset JSON inspection — 5 October 2026
 
-Downloaded and parsed these public JSON files locally. Copies and `inspection.json` remain in this directory and are excluded from Git. No external prompt or regex was activated in vChat.
+Downloaded and parsed these public JSON files locally. Copies and `inspection.json` remain in this directory and are excluded from Git. Writer's Block now has a separate, opt-in co-writing adaptation; see [implementation notes](../../src/presets/README.md). External regex scripts and SillyTavern macros are not executed.
 
 | Preset | Local file | Size | Prompt blocks |
 | --- | --- | ---: | ---: |

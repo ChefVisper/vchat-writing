@@ -1,5 +1,9 @@
-import { DEFAULT_PROMPT_TEMPLATE, type Story, type Lore } from "../types";
-import { taskInstructions } from "../providers/types";
+import { type Story, type Lore } from "../types";
+import {
+  activeWritingTemplate,
+  writerBlockRules,
+} from "../presets/writersBlock";
+import { taskInstruction } from "../providers/types";
 import { totalOutput, thinkingContext } from "../generation/thinking";
 export const estimate = (s: string) =>
   Math.ceil(new TextEncoder().encode(s).length / 3.5);
@@ -72,7 +76,8 @@ const block = (name: string, content: string) =>
   content ? `[${name}]\n${content}\n[/${name}]` : "";
 export function buildPrompt(story: Story) {
   const lore = activateLore(story);
-  const template = story.promptTemplate ?? DEFAULT_PROMPT_TEMPLATE;
+  const template = activeWritingTemplate(story);
+  const presetRules = writerBlockRules(story);
   const invalidTemplate =
     !template.includes("{{context}}") || !template.includes("{{story}}");
   const notes = story.notes.filter(
@@ -140,6 +145,9 @@ export function buildPrompt(story: Story) {
         name: "Output guidance",
         text: `VISIBLE PROSE: Under ${story.settings.maxTokens} tokens (reasoning excluded). Finish the final sentence; keep thinking separate.`,
       },
+      ...(presetRules
+        ? [{ name: "Writer's Block rules", text: presetRules }]
+        : []),
       ...(story.nextInstruction?.trim()
         ? [
             {
@@ -169,7 +177,7 @@ export function buildPrompt(story: Story) {
     story.settings.context -
       totalOutput(story.settings) -
       (["openrouter", "nanogpt"].includes(story.connection.kind)
-        ? estimate(taskInstructions.writing) + 12
+        ? estimate(taskInstruction("writing", story.writingPreset)) + 12
         : 0),
   );
   while (total() > budget && text.length) {

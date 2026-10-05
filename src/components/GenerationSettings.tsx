@@ -9,6 +9,7 @@ import { credentialId } from "../storage/credentials";
 import { Field, Toggle } from "./Fields";
 import { providers } from "../providers";
 import { storage } from "../storage/stories";
+import { WritingPresetSettings } from "./WritingPresetSettings";
 export function ConnectionPanel({
   story,
   patch,
@@ -331,6 +332,7 @@ export function GenerationSettings({
   return (
     <>
       <h2>Settings</h2>
+      <WritingPresetSettings story={story} patch={patch} />
       <div className="token-limits">
         {limits.map(([key, label, min, max]) => (
           <Field key={key} label={label}>
@@ -366,6 +368,7 @@ export function GenerationSettings({
         </p>
       </div>
 
+      <h3>Generation presets</h3>
       <Field label="Load preset">
         <select
           defaultValue=""

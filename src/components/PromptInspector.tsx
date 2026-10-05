@@ -6,7 +6,12 @@ import {
 } from "../types";
 import { buildPrompt } from "../context/promptBuilder";
 import { providers } from "../providers";
-import { taskInstructions } from "../providers/types";
+import { taskInstruction } from "../providers/types";
+import {
+  activeWritingTemplate,
+  writingPresetName,
+  WRITERS_BLOCK_TEMPLATE,
+} from "../presets/writersBlock";
 export function PromptInspector({
   story,
   lastPrompt,
@@ -20,15 +25,25 @@ export function PromptInspector({
 }) {
   const p = assembled;
   const [exact, setExact] = useState<string>("");
+  const wb = story.writingPreset === "writers-block";
+  const template = activeWritingTemplate(story);
+  const initialTemplate = wb ? WRITERS_BLOCK_TEMPLATE : DEFAULT_PROMPT_TEMPLATE;
+  const setTemplate = (value: string) =>
+    patch(wb ? { writersBlockTemplate: value } : { promptTemplate: value });
   return (
     <>
       <h2>Prompt</h2>
+      <p className="help">
+        Writing preset: {writingPresetName(story)}. This preset's template is
+        saved independently.
+      </p>
       <label className="field">
         <span>Prompt template</span>
         <textarea
           className="prompt-template"
-          value={story.promptTemplate ?? DEFAULT_PROMPT_TEMPLATE}
-          onChange={(e) => patch({ promptTemplate: e.target.value })}
+          maxLength={wb ? 20000 : undefined}
+          value={template}
+          onChange={(e) => setTemplate(e.target.value)}
           spellCheck={false}
         />
       </label>
@@ -36,13 +51,12 @@ export function PromptInspector({
         Use {"{{context}}"} for memory, notes, lore, and earlier text;
         {" {{story}}"} for the continuation point. Both are required. Changes
         are saved with this story and used on the next Continue.
+        {wb &&
+          " Selected Writer's Block controls are added before this template. Change them in Settings."}
       </p>
       <button
-        onClick={() => patch({ promptTemplate: DEFAULT_PROMPT_TEMPLATE })}
-        disabled={
-          (story.promptTemplate ?? DEFAULT_PROMPT_TEMPLATE) ===
-          DEFAULT_PROMPT_TEMPLATE
-        }
+        onClick={() => setTemplate(initialTemplate)}
+        disabled={template === initialTemplate}
       >
         Reset prompt
       </button>
@@ -51,14 +65,17 @@ export function PromptInspector({
           Add both {"{{context}}"} and {"{{story}}"} before continuing.
         </p>
       )}
-      {story.connection.kind === "openrouter" && (
+      {["openrouter", "nanogpt"].includes(story.connection.kind) && (
         <details>
-          <summary>OpenRouter system instruction</summary>
+          <summary>
+            {story.connection.kind === "openrouter" ? "OpenRouter" : "NanoGPT"}{" "}
+            system instruction
+          </summary>
           <p className="help">
             This output contract is sent before your editable writing prompt.
             Its estimated tokens are reserved from Max Context.
           </p>
-          <pre>{taskInstructions.writing}</pre>
+          <pre>{taskInstruction("writing", story.writingPreset)}</pre>
         </details>
       )}
       <details>
