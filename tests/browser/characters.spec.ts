@@ -95,9 +95,12 @@ test("Chub link import previews complete context; greetings preserve shared stat
     "Built in 1980.",
   );
   await page.getByRole("button", { name: "Notebook", exact: true }).click();
-  await page.getByLabel("Creative notes", { exact: true }).check();
+  await expect(page.getByLabel("Creative notes", { exact: true })).toHaveCount(
+    0,
+  );
   await page.getByRole("button", { name: "Add note", exact: true }).click();
   await page.getByLabel("Note title").fill("Scene");
+  await page.getByLabel("Creative notes", { exact: true }).check();
   await page.getByLabel("Scene content", { exact: true }).fill("Morning.");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Writing Output (tokens)", { exact: true }).fill("150");
@@ -116,6 +119,7 @@ test("Chub link import previews complete context; greetings preserve shared stat
   await expect(page.getByLabel("Scene content", { exact: true })).toHaveValue(
     "Morning.",
   );
+  await page.getByRole("button", { name: "Options", exact: true }).click();
   await expect(
     page.getByLabel("Creative notes", { exact: true }),
   ).toBeChecked();
@@ -205,7 +209,7 @@ test("creative notes send the permissive mode and preserve review until accepted
             text: JSON.stringify({
               updates: [
                 {
-                  noteId: notes[0].noteId,
+                  noteId: notes.find((n: any) => n.creative).noteId,
                   newContent: "A quiet, patient librarian.",
                 },
               ],
@@ -221,12 +225,27 @@ test("creative notes send the permissive mode and preserve review until accepted
   await page.getByRole("button", { name: "Add note", exact: true }).click();
   await page.getByLabel("Note title").fill("Personality");
   await page.getByLabel("Creative notes", { exact: true }).check();
+  await page.getByRole("button", { name: "Add note", exact: true }).click();
+  await page.getByLabel("Note title").last().fill("Evidence only");
+  await expect(
+    page.getByLabel("Creative notes", { exact: true }),
+  ).not.toBeChecked();
   await page.getByRole("button", { name: "Note", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Accept all", exact: true }),
   ).toBeVisible();
-  expect(prompt).toContain("NOTE MODE: CREATIVE");
+  expect(prompt).toContain("NOTE MODE: PER NOTE");
   expect(prompt).not.toContain("Use only the supplied prose as evidence.");
+  const sentNotes = JSON.parse(
+    prompt.split("NOTES:\n")[1].split("\n\nNEW PROSE:")[0],
+  );
+  expect(sentNotes.map((n: any) => [n.title, n.creative])).toEqual([
+    ["Personality", true],
+    ["Evidence only", false],
+  ]);
+  await expect(
+    page.getByLabel("Evidence only content", { exact: true }),
+  ).toHaveValue("");
   await expect(
     page.getByLabel("Personality content", { exact: true }),
   ).toHaveValue("");
@@ -236,7 +255,17 @@ test("creative notes send the permissive mode and preserve review until accepted
   ).toHaveValue("A quiet, patient librarian.");
   await page.reload();
   await page.getByRole("button", { name: "Notebook", exact: true }).click();
+  const personality = page
+    .locator(".note-card")
+    .filter({ has: page.getByLabel("Personality content", { exact: true }) });
+  await personality
+    .getByRole("button", { name: "Options", exact: true })
+    .click();
   await expect(
-    page.getByLabel("Creative notes", { exact: true }),
+    personality.getByLabel("Creative notes", { exact: true }),
   ).toBeChecked();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByLabel("Creative notes", { exact: true })).toHaveCount(
+    0,
+  );
 });

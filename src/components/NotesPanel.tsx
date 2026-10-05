@@ -39,17 +39,6 @@ export function NotesPanel({
           <Plus size={18} />
         </button>
       </div>
-      <Toggle
-        label="Creative notes"
-        value={story.settings.creativeNotes}
-        onChange={(creativeNotes) =>
-          patch({ settings: { ...story.settings, creativeNotes } })
-        }
-      />
-      <p className="help">
-        Allow fictional details and fill blank notes even when absent from the
-        manuscript. Locks and Review / Auto modes still apply.
-      </p>
 
       {pending.length > 0 && (
         <section className="review">
@@ -142,6 +131,15 @@ export function NotesPanel({
                 value={n.aiEditable}
                 onChange={(aiEditable) => change(n.id, { aiEditable })}
               />
+              <Toggle
+                label="Creative notes"
+                value={n.creative === true}
+                onChange={(creative) => change(n.id, { creative })}
+              />
+              <p className="help">
+                Allow invented details in this note, even when absent from the
+                manuscript. Locks and Review / Auto modes still apply.
+              </p>
               <Toggle
                 label="Lock AI changes"
                 value={n.locked}

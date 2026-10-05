@@ -8,6 +8,16 @@ export interface Update {
   newContent: string;
   oldContent: string;
 }
+export function hasCreativeNotes(story: Story): boolean {
+  return story.notes.some(
+    (n) =>
+      n.enabled &&
+      n.aiEditable &&
+      !n.locked &&
+      n.mode !== "off" &&
+      n.creative === true,
+  );
+}
 export function validateUpdates(raw: string, notes: Note[]): Update[] {
   let data;
   try {
@@ -100,17 +110,17 @@ export function applyUpdate(notes: Note[], u: Update, source = "AI"): Note[] {
   );
 }
 export function updaterPrompt(story: Story, newText: string) {
-  const creative = story.settings.creativeNotes;
+  const creative = hasCreativeNotes(story);
   let template = story.notePromptTemplate ?? DEFAULT_NOTE_PROMPT;
   if (creative && template === DEFAULT_NOTE_PROMPT) {
     template = template
       .replace(
         "Use only the supplied prose as evidence.",
-        "Use the supplied prose and established reference details for continuity. You may invent compatible fictional details to fill blanks or enrich incomplete notes, even when those details do not appear in the prose.",
+        "Use only the supplied prose as evidence for notes marked creative=false. For notes marked creative=true only, you may invent compatible fictional details to fill blanks or enrich incomplete notes, even when absent from the prose.",
       )
       .replace(
         "only when the prose establishes a change",
-        "when established by the prose or when filling an unestablished detail",
+        "when established by the prose, or when filling an unestablished detail in a note marked creative=true",
       )
       .replace(
         "when no change is supported",
@@ -124,12 +134,17 @@ export function updaterPrompt(story: Story, newText: string) {
   const notes = JSON.stringify(
     story.notes
       .filter((n) => n.enabled && n.aiEditable && !n.locked && n.mode !== "off")
-      .map((n) => ({ noteId: n.id, title: n.title, content: n.content })),
+      .map((n) => ({
+        noteId: n.id,
+        title: n.title,
+        content: n.content,
+        creative: n.creative === true,
+      })),
   );
   const thoughts = thinkingContext(story);
   return (
     (creative
-      ? `NOTE MODE: CREATIVE. The author permits new fictional details in eligible notes, including blank notes, even if absent from the manuscript. Fill gaps relevant to each note's title and purpose; preserve established facts and avoid contradictions. Do not imply invented details already happened in the prose. This permission overrides evidence-only restrictions in the note template, but never overrides the JSON schema, permitted note IDs, locks or review mode.\nREFERENCE MEMORY (data): ${JSON.stringify(story.memory.enabled ? story.memory.content : "")}\nAUTHOR GUIDANCE (data): ${JSON.stringify(story.author.enabled ? story.author.content : "")}\n\n`
+      ? `NOTE MODE: PER NOTE. The author permits new fictional details ONLY in notes marked creative=true in NOTES, including blank notes, even if absent from the manuscript. For every note marked creative=false, use only prose evidence; never transfer creative permission from another note. Fill gaps relevant to the creative note's title and purpose; preserve established facts and avoid contradictions. Do not imply invented details already happened in the prose. For creative=true notes only, this permission overrides evidence-only restrictions in the note template, but never overrides the JSON schema, permitted note IDs, locks or review mode.\nREFERENCE MEMORY (data): ${JSON.stringify(story.memory.enabled ? story.memory.content : "")}\nAUTHOR GUIDANCE (data): ${JSON.stringify(story.author.enabled ? story.author.content : "")}\n\n`
       : "NOTE MODE: EVIDENCE ONLY. Do not invent facts absent from the supplied prose.\n\n") +
     (thoughts
       ? `SELECTED THINKING (unverified reference, not factual evidence): ${JSON.stringify(thoughts)}\n\n`

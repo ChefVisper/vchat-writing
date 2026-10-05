@@ -1,6 +1,12 @@
-import { upgradePromptTemplate, newStory, type Story } from "../types";
+import {
+  upgradePromptTemplate,
+  upgradeNoteCreativity,
+  newStory,
+  type Story,
+} from "../types";
 import { packStory, unpackStory } from "./compact";
 export function exportProject(s: Story) {
+  s = upgradeNoteCreativity(s);
   return JSON.stringify({
     format: "margin-project",
     version: 2,
@@ -27,6 +33,11 @@ export function importProject(raw: string): Story {
     throw new Error("This is not a supported Margin project.");
   const s = d.version === 2 ? unpackStory(d) : d.story;
   const base = newStory();
+  if (
+    s.settings?.creativeNotes !== undefined &&
+    typeof s.settings.creativeNotes !== "boolean"
+  )
+    throw new Error("Invalid legacy creative notes setting.");
   if (
     s.characterSource !== undefined &&
     (typeof s.characterSource !== "string" || s.characterSource.length > 1000)
@@ -179,6 +190,7 @@ export function importProject(raw: string): Story {
         ["enabled", "include", "aiEditable", "locked"].every(
           (k) => typeof n[k] === "boolean",
         ) &&
+        (n.creative === undefined || typeof n.creative === "boolean") &&
         position(n.position) &&
         ["off", "auto", "review"].includes(n.mode) &&
         Array.isArray(n.revisions) &&
@@ -254,7 +266,7 @@ export function importProject(raw: string): Story {
     throw new Error(
       "Invalid project history or context data. Nothing was imported.",
     );
-  return {
+  return upgradeNoteCreativity({
     ...base,
     ...s,
     noteConnection: s.noteConnection
@@ -270,7 +282,7 @@ export function importProject(raw: string): Story {
       url: s.connection.url,
       model: s.connection.model,
     },
-  };
+  });
 }
 export function download(name: string, content: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));

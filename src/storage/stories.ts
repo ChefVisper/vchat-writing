@@ -1,5 +1,10 @@
 import { openDB } from "idb";
-import { defaults, upgradePromptTemplate, type Story } from "../types";
+import {
+  defaults,
+  upgradePromptTemplate,
+  upgradeNoteCreativity,
+  type Story,
+} from "../types";
 import { packStory, unpackStory } from "./compact";
 const db = openDB("margin-writing", 1, {
   upgrade(db) {
@@ -15,14 +20,14 @@ export const storage = {
           (stored as any).encoding === "delta-v1"
             ? unpackStory(stored as any)
             : stored;
-        return {
+        return upgradeNoteCreativity({
           ...story,
           promptTemplate: upgradePromptTemplate(story.promptTemplate),
           settings: {
             ...defaults,
             ...story.settings,
           },
-        };
+        });
       }),
     ),
   save: async (s: Story) => (await db).put("stories", packStory(s)),

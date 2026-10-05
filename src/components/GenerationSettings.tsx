@@ -410,13 +410,6 @@ export function GenerationSettings({
           Save
         </button>
       </div>
-      <Toggle
-        label="Creative notes"
-        value={s.creativeNotes}
-        onChange={(creativeNotes) =>
-          patch({ settings: { ...s, creativeNotes } })
-        }
-      />
       <h3>Thinking</h3>
       <Field label="Thinking prefix">
         <input

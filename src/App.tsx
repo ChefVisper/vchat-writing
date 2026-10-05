@@ -64,6 +64,7 @@ import {
   validateUpdates,
   applyUpdate,
   buildNotePrompt,
+  hasCreativeNotes,
   type Update,
 } from "./generation/stateUpdater";
 import { exportProject, importProject, download } from "./storage/transfer";
@@ -396,7 +397,8 @@ export default function App() {
       !force && now.lastUpdateText && now.text.startsWith(now.lastUpdateText)
         ? now.text.slice(now.lastUpdateText.length)
         : now.text;
-    if (!prose.trim() && !now.settings.creativeNotes) {
+    const creative = hasCreativeNotes(now);
+    if (!prose.trim() && !creative) {
       setNotice("Notes are already up to date; no new prose to check.");
       return;
     }
@@ -413,9 +415,7 @@ export default function App() {
         signal: c.signal,
         settings: {
           ...now.settings,
-          temperature: now.settings.creativeNotes
-            ? now.settings.temperature
-            : 0.1,
+          temperature: creative ? now.settings.temperature : 0.1,
           maxTokens: now.settings.noteMaxTokens,
           thinking: now.settings.noteThinking,
           thinkingLevel: now.settings.noteThinkingLevel,

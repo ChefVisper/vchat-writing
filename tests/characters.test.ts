@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { newNote, newStory, DEFAULT_NOTE_PROMPT } from "../src/types";
+import {
+  newNote,
+  newStory,
+  DEFAULT_NOTE_PROMPT,
+  upgradeNoteCreativity,
+} from "../src/types";
 import { creationStory } from "../src/generation/creation";
 import { greetingStory } from "../src/generation/greetings";
 import {
@@ -140,7 +145,7 @@ describe("character links and import", () => {
 describe("greetings", () => {
   it("starts an independent session with copied context/settings and fresh generation history", () => {
     const source = newStory(true);
-    source.settings.creativeNotes = true;
+    source.notes[0].creative = true;
     source.greetings = [
       { id: "g", title: "Greeting 1", text: "Different opening." },
     ];
@@ -159,7 +164,7 @@ describe("greetings", () => {
     s.notes[0].content = "Changed.";
     expect(source.notes[0].content).not.toBe("Changed.");
     expect(importProject(exportProject(s)).greetings).toEqual(s.greetings);
-    expect(importProject(exportProject(s)).settings.creativeNotes).toBe(true);
+    expect(importProject(exportProject(s)).notes[0].creative).toBe(true);
     expect(() =>
       greetingStory(source, { id: "x", title: "Empty", text: "" }),
     ).toThrow();
@@ -179,23 +184,89 @@ describe("greetings", () => {
     const legacy = JSON.parse(exportProject(s));
     delete legacy.story.greetings;
     delete legacy.story.settings.creativeNotes;
-    expect(importProject(JSON.stringify(legacy)).settings.creativeNotes).toBe(
-      false,
-    );
+    expect(
+      importProject(JSON.stringify(legacy)).settings.creativeNotes,
+    ).toBeUndefined();
+    expect(newNote().creative).toBe(false);
   });
 });
 describe("creative notes", () => {
+  it("migrates legacy global permission across saved notes and history without changing explicit note choices", () => {
+    const s = newStory(true);
+    delete s.notes[0].creative;
+    s.settings.creativeNotes = true;
+    s.notes.push({ ...newNote(), creative: false });
+    s.snapshots.push({
+      id: "snap",
+      title: "Old",
+      at: 1,
+      text: "Old.",
+      notes: structuredClone(s.notes),
+    });
+    s.segments.push({
+      id: "seg",
+      before: "",
+      after: "Old.",
+      at: 1,
+      notesBefore: structuredClone(s.notes),
+      notesAfter: structuredClone(s.notes),
+    });
+    const migrated = upgradeNoteCreativity(s);
+    expect(migrated.notes.map((n) => n.creative)).toEqual([true, false]);
+    expect(migrated.snapshots[0].notes.map((n) => n.creative)).toEqual([
+      true,
+      false,
+    ]);
+    expect(migrated.segments[0].notesBefore?.map((n) => n.creative)).toEqual([
+      true,
+      false,
+    ]);
+    expect(migrated.segments[0].notesAfter?.map((n) => n.creative)).toEqual([
+      true,
+      false,
+    ]);
+    expect(migrated.settings.creativeNotes).toBeUndefined();
+    expect(s.notes[0].creative).toBeUndefined();
+    const roundTrip = importProject(exportProject(s));
+    expect(roundTrip.notes.map((n) => n.creative)).toEqual([true, false]);
+    const old = JSON.parse(exportProject(newStory(true)));
+    old.story.settings.creativeNotes = true;
+    delete old.story.notes[0].creative;
+    expect(importProject(JSON.stringify(old)).notes[0].creative).toBe(true);
+    old.story.notes[0].creative = "yes";
+    expect(() => importProject(JSON.stringify(old))).toThrow();
+  });
+  it("only editable, enabled, unlocked creative notes activate the creative request", () => {
+    const s = newStory(true);
+    s.notes[0].creative = true;
+    for (const patch of [
+      { enabled: false },
+      { aiEditable: false },
+      { locked: true },
+      { mode: "off" as const },
+    ]) {
+      const blocked = { ...s, notes: [{ ...s.notes[0], ...patch }] };
+      expect(updaterPrompt(blocked, "")).toContain("NOTE MODE: EVIDENCE ONLY");
+    }
+    s.notes[0].creative = false;
+    expect(updaterPrompt(s, "")).toContain("NOTE MODE: EVIDENCE ONLY");
+  });
   it("defaults to evidence and only lifts evidence restrictions when explicitly enabled", () => {
     const s = newStory(true);
     s.notes.push({ ...newNote(), title: "Personality" });
     expect(updaterPrompt(s, "Hello.")).toContain("NOTE MODE: EVIDENCE ONLY");
-    s.settings.creativeNotes = true;
+    s.notes[1].creative = true;
     const p = updaterPrompt(s, "Hello.");
-    expect(p).toContain("NOTE MODE: CREATIVE");
+    expect(p).toContain("NOTE MODE: PER NOTE");
     expect(p).toContain("blank notes");
     expect(p).not.toContain("Use only the supplied prose as evidence.");
     expect(p).toContain(s.memory.content);
-    expect(p).toContain('"noteId"');
+    const notes = JSON.parse(p.split("NOTES:\n")[1].split("\n\nNEW PROSE:")[0]);
+    expect(notes.map((n: any) => [n.noteId, n.creative])).toEqual([
+      [s.notes[0].id, false],
+      [s.notes[1].id, true],
+    ]);
+    expect(p).toContain("never transfer creative permission from another note");
     expect(p).not.toContain("{{notes}}");
     s.notePromptTemplate = DEFAULT_NOTE_PROMPT + "\nCustom rule.";
     expect(updaterPrompt(s, "")).toContain(
@@ -205,7 +276,7 @@ describe("creative notes", () => {
   });
   it("keeps context budget, locks and note modes enforced in creative mode", () => {
     const s = newStory(true);
-    s.settings.creativeNotes = true;
+    s.notes[0].creative = true;
     s.notes[0].locked = true;
     expect(updaterPrompt(s, "Hello.")).not.toContain(s.notes[0].id);
     expect(() =>
@@ -216,8 +287,9 @@ describe("creative notes", () => {
         s.notes,
       ),
     ).toThrow();
-    s.settings.context = 1000;
-    s.memory.content = "Large memory. ".repeat(500);
+    s.notes.push({ ...newNote(), creative: true });
+    s.settings.context = 6000;
+    s.memory.content = "Large memory. ".repeat(2000);
     expect(() => buildNotePrompt(s, "Hello.")).toThrow("Max Context");
   });
 });

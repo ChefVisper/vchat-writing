@@ -18,6 +18,7 @@ export interface Note {
   enabled: boolean;
   include: boolean;
   aiEditable: boolean;
+  creative?: boolean;
   locked: boolean;
   position: Position;
   keywords: string;
@@ -52,7 +53,7 @@ export interface Settings {
   thinking: boolean;
   thinkingLevel: "minimal" | "low" | "medium" | "high";
   noteThinking: boolean;
-  creativeNotes: boolean;
+  creativeNotes?: boolean; // Legacy global option; migrated to each note's creative flag.
   noteThinkingLevel: "minimal" | "low" | "medium" | "high";
   context: number;
   seed: number;
@@ -153,7 +154,6 @@ export const defaults: Settings = {
   thinking: false,
   thinkingLevel: "low",
   noteThinking: false,
-  creativeNotes: false,
   noteThinkingLevel: "low",
   context: 8192,
   seed: -1,
@@ -231,6 +231,24 @@ export function noteConnection(story: Story): Connection {
     };
   return story.connection;
 }
+export function upgradeNoteCreativity(story: Story): Story {
+  const legacy = story.settings.creativeNotes === true;
+  const settings = { ...story.settings };
+  delete settings.creativeNotes;
+  const notes = (value: Note[]) =>
+    value.map((n) => ({ ...n, creative: n.creative ?? legacy }));
+  return {
+    ...story,
+    settings,
+    notes: notes(story.notes),
+    snapshots: story.snapshots.map((s) => ({ ...s, notes: notes(s.notes) })),
+    segments: story.segments.map((s) => ({
+      ...s,
+      ...(s.notesBefore ? { notesBefore: notes(s.notesBefore) } : {}),
+      ...(s.notesAfter ? { notesAfter: notes(s.notesAfter) } : {}),
+    })),
+  };
+}
 export const newNote = (): Note => ({
   id: uid(),
   title: "Untitled note",
@@ -238,6 +256,7 @@ export const newNote = (): Note => ({
   enabled: true,
   include: true,
   aiEditable: true,
+  creative: false,
   locked: false,
   position: "after",
   keywords: "",
