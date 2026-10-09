@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState, useRef, useMemo } from "react";
 import {
   BookOpen,
   Brain,
+  ListChecks,
   MessageSquarePlus,
   Feather,
   Plus,
@@ -78,6 +79,16 @@ import {
 } from "./components/GenerationSettings";
 import { PromptInspector } from "./components/PromptInspector";
 import { ThinkingPanel } from "./components/ThinkingPanel";
+import { InternalStatesPanel } from "./components/InternalStatesPanel";
+import { ff54Config } from "./presets/ff54";
+import {
+  appendStateRecord,
+  buildInternalStatePrompt,
+  makeStateRecord,
+  updatedStateBlocks,
+  validateInternalStates,
+} from "./generation/internalStates";
+import { statePointer, statesForText } from "./generation/stateHistory";
 import { CreateWorkspace } from "./components/CreateWorkspace";
 import { GreetingsPanel } from "./components/GreetingsPanel";
 import {
@@ -87,6 +98,7 @@ import {
 const tabs = [
   { id: "greetings", label: "Greetings", icon: MessageSquarePlus },
   { id: "thinking", label: "Thinking", icon: Brain },
+  { id: "states", label: "Internal States", icon: ListChecks },
   { id: "notes", label: "Notebook", icon: NotebookPen },
   { id: "context", label: "Memory", icon: Layers },
   { id: "lore", label: "Lorebook", icon: Globe2 },
@@ -363,6 +375,8 @@ export default function App() {
       "Passage replaced. Undo restores it in one step. Use Note to recheck continuity notes.",
     );
     void store.flush();
+    if (ff54Config(current()).enabled && ff54Config(current()).autoUpdate)
+      void generate(false, "states");
   }
   function stop() {
     controller.current?.abort();
@@ -373,6 +387,84 @@ export default function App() {
           .abort?.(active.connection, active.key)
           .catch(() => {}) ?? Promise.resolve();
     }
+  }
+  async function updateInternalStates() {
+    const now = current();
+    const config = ff54Config(now);
+    if (!config.enabled || !config.modules.length) {
+      setNotice(
+        !config.enabled
+          ? "Enable Internal States under Settings → FF 5.4."
+          : "Select at least one FF 5.4 state module.",
+      );
+      return;
+    }
+    setPhase("Updating states");
+    followGeneration.current = false;
+    const c = new AbortController();
+    controller.current = c;
+    const connection = noteConnection(now);
+    const key =
+      keys[
+        credentialId(
+          connection,
+          now.noteConnectionMode === "separate" ? "notes" : "writing",
+        )
+      ] || "";
+    activeRequest.current = { connection, key };
+    const assembled = buildInternalStatePrompt(
+      now,
+      useStore.getState().lorebooks,
+    );
+    const thoughts = captureThinking("states", connection);
+    let result: string;
+    try {
+      result = await providers[connection.kind].generate({
+        prompt: assembled.prompt,
+        connection,
+        key,
+        purpose: "states",
+        onReasoning: thoughts.onReasoning,
+        signal: c.signal,
+        onToken: () => {},
+        settings: {
+          ...now.settings,
+          maxTokens: config.maxTokens,
+          thinking: config.thinking,
+          thinkingLevel: config.thinkingLevel,
+          thinkingMaxTokens: config.thinkingMaxTokens,
+          temperature: config.creative
+            ? Math.min(now.settings.temperature, 0.6)
+            : 0.1,
+          streaming: false,
+          stops: "",
+        },
+      });
+    } finally {
+      thoughts.finish();
+    }
+    c.signal.throwIfAborted();
+    if (current().id !== now.id || current().text !== now.text)
+      throw new Error(
+        "The manuscript changed during the state update. Previous states were kept; refresh again.",
+      );
+    const blocks = validateInternalStates(result, config.modules);
+    const record = makeStateRecord(
+      now,
+      updatedStateBlocks(now, blocks),
+      connection,
+    );
+    patch({
+      internalStates: appendStateRecord(current(), record),
+      segments: current().segments.map((segment, index, all) =>
+        index === all.length - 1 && segment.after === now.text
+          ? { ...segment, statesAfter: record.id }
+          : segment,
+      ),
+    });
+    setNotice(
+      `Internal States updated (${blocks.length} modules).${assembled.trimmed ? ` ${assembled.trimmed} older prose characters omitted to fit Max Context.` : ""}`,
+    );
   }
   async function updateNotes(force = false) {
     const now = current();
@@ -463,12 +555,12 @@ export default function App() {
   }
   async function generate(
     retry = false,
-    mode: "continue" | "write" | "note" = "continue",
+    mode: "continue" | "write" | "note" | "states" = "continue",
   ) {
     if (busy || controller.current || !story) return;
     setError("");
     setNotice("");
-    if (pending.length && mode !== "write") {
+    if (pending.length && mode !== "write" && mode !== "states") {
       setPanel("notes");
       setError(
         "Accept or reject the pending note changes before updating notes.",
@@ -477,11 +569,15 @@ export default function App() {
     }
     let s = current();
     setBusy(true);
-    settleScroll.current = mode !== "note";
+    settleScroll.current = mode === "write" || mode === "continue";
     nativeAbort.current = Promise.resolve();
     try {
+      if (mode === "states") {
+        await updateInternalStates();
+        return;
+      }
       if (mode === "note") {
-        await updateNotes(true);
+        await finishContinuity(true, ff54Config(current()).enabled);
         return;
       }
       if (retry) {
@@ -490,6 +586,7 @@ export default function App() {
           ...s,
           text: segment.before,
           notes: segment.notesBefore || s.notes,
+          ...statesForText(s, segment.before, segment.statesBefore),
           segments: s.segments.slice(0, -1),
           nextInstruction: s.nextInstruction?.trim()
             ? s.nextInstruction
@@ -517,10 +614,17 @@ export default function App() {
       const original = originalStory.text;
       const before = s.text;
       const notesBefore = structuredClone(s.notes);
-      if (retry) patch({ text: before, notes: s.notes, segments: s.segments });
+      if (retry)
+        patch({
+          text: before,
+          notes: s.notes,
+          segments: s.segments,
+          ...statesForText(s, before, statePointer(s)),
+        });
       let raw = "";
       const thoughts = captureThinking("writing", s.connection);
       let completed = false;
+      let wrotePassage = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const renderDraft = () => {
         timer = undefined;
@@ -585,6 +689,7 @@ export default function App() {
               : "No complete sentence returned; the manuscript was kept unchanged. Increase Writing Output or disable trimming.",
           );
         if (addition.trim()) {
+          wrotePassage = true;
           const text = before + addition;
           patch({
             text,
@@ -598,6 +703,8 @@ export default function App() {
                 after: text,
                 at: Date.now(),
                 notesBefore,
+                statesBefore: statePointer(s),
+                statesAfter: null,
                 instruction: s.nextInstruction?.trim() || undefined,
               },
             ],
@@ -612,12 +719,20 @@ export default function App() {
             text: original,
             notes: originalStory.notes,
             segments: originalStory.segments,
+            ...(originalStory.internalStates
+              ? { internalStates: originalStory.internalStates }
+              : {}),
           });
         } else if (raw) patch({ text: original });
         scrollEditorToBottom();
       }
       await nativeAbort.current;
-      if (mode === "continue") await updateNotes();
+      const updateStates =
+        wrotePassage &&
+        ff54Config(current()).enabled &&
+        ff54Config(current()).autoUpdate;
+      if (mode === "continue") await finishContinuity(false, updateStates);
+      else if (updateStates) await updateInternalStates();
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError"))
         setError(
@@ -626,6 +741,7 @@ export default function App() {
             : "Generation failed. Check your connection.",
         );
     } finally {
+      await nativeAbort.current;
       followGeneration.current = false;
       setBusy(false);
       setPhase("");
@@ -633,6 +749,31 @@ export default function App() {
       activeRequest.current = null;
       void store.flush();
     }
+  }
+  async function finishContinuity(forceNotes: boolean, withStates: boolean) {
+    let noteFailure = "";
+    try {
+      await updateNotes(forceNotes);
+    } catch (e) {
+      if (controller.current?.signal.aborted)
+        throw new DOMException("Cancelled", "AbortError");
+      if (!withStates) throw e;
+      noteFailure = e instanceof Error ? e.message : "Note update failed.";
+    }
+    if (withStates) {
+      try {
+        await updateInternalStates();
+      } catch (e) {
+        if (controller.current?.signal.aborted)
+          throw new DOMException("Cancelled", "AbortError");
+        if (noteFailure)
+          throw new Error(
+            `${noteFailure}\n${e instanceof Error ? e.message : "Internal States update failed."}`,
+          );
+        throw e;
+      }
+    }
+    if (noteFailure) throw new Error(noteFailure);
   }
   function accept(id?: string) {
     let notes = current().notes;
@@ -657,6 +798,7 @@ export default function App() {
           at: Date.now(),
           text: story.text,
           notes: structuredClone(story.notes),
+          stateId: statePointer(story),
         },
       ],
     });
@@ -1171,9 +1313,11 @@ export default function App() {
                       <Square size={15} />{" "}
                       {phase === "Updating notes"
                         ? "Stop notes"
-                        : phase === "Rewriting"
-                          ? "Stop rewriting"
-                          : "Stop writing"}
+                        : phase === "Updating states"
+                          ? "Stop states"
+                          : phase === "Rewriting"
+                            ? "Stop rewriting"
+                            : "Stop writing"}
                     </button>
                   ) : (
                     <button
@@ -1207,9 +1351,23 @@ export default function App() {
                     </button>
                   </div>
                   <div className="panel-body">
-                    <fieldset disabled={busy} className="panel-fieldset">
+                    <fieldset
+                      disabled={busy && panel !== "states"}
+                      className="panel-fieldset"
+                    >
                       {panel === "thinking" && (
                         <ThinkingPanel story={story} patch={patch} />
+                      )}
+                      {panel === "states" && (
+                        <InternalStatesPanel
+                          story={story}
+                          patch={patch}
+                          busy={busy}
+                          onUpdate={() => void generate(false, "states")}
+                          onStop={
+                            phase === "Updating states" ? stop : undefined
+                          }
+                        />
                       )}
                       {panel === "rewrite" && (
                         <>
@@ -1414,6 +1572,7 @@ export default function App() {
                                     notes: structuredClone(s.notes),
                                     past: [...story.past, story.text],
                                     future: [],
+                                    ...statesForText(story, s.text, s.stateId),
                                   });
                                   setPending([]);
                                   setNotice(
@@ -1439,6 +1598,11 @@ export default function App() {
                                     title: branchTitle(story, store.stories),
                                     parent: story.id,
                                     text: s.after,
+                                    ...statesForText(
+                                      story,
+                                      s.after,
+                                      s.statesAfter,
+                                    ),
                                     notes:
                                       s.notesAfter ||
                                       s.notesBefore ||

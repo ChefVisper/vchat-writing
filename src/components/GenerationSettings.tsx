@@ -10,6 +10,7 @@ import { Field, Toggle } from "./Fields";
 import { providers } from "../providers";
 import { storage } from "../storage/stories";
 import { WritingPresetSettings } from "./WritingPresetSettings";
+import { FF54Settings } from "./FF54Settings";
 export function ConnectionPanel({
   story,
   patch,
@@ -333,6 +334,7 @@ export function GenerationSettings({
     <>
       <h2>Settings</h2>
       <WritingPresetSettings story={story} patch={patch} />
+      <FF54Settings story={story} patch={patch} />
       <div className="token-limits">
         {limits.map(([key, label, min, max]) => (
           <Field key={key} label={label}>

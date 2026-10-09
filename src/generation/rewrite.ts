@@ -3,6 +3,7 @@ import { activateLore, estimate } from "../context/promptBuilder";
 import { taskInstructions } from "../providers/types";
 import { totalOutput, thinkingContext } from "./thinking";
 import { writerBlockRules } from "../presets/writersBlock";
+import { internalStateContext } from "./internalStates";
 export function buildRewritePrompt(
   story: Story,
   from: number,
@@ -14,6 +15,7 @@ export function buildRewritePrompt(
     throw new Error("Select a passage and enter an editing instruction.");
   const selected = story.text.slice(from, to);
   const reference = [
+    internalStateContext(story),
     thinkingContext(story)
       ? "Selected thinking (unverified): " + thinkingContext(story)
       : "",

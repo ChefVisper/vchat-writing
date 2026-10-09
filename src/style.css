@@ -225,6 +225,14 @@ a {
   padding: 4px 0;
   flex-shrink: 0;
 }
+.editor-toolbar > .row:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.editor-toolbar > .row:last-child {
+  flex: 0 0 auto;
+}
 .row {
   display: flex;
   align-items: center;
@@ -235,12 +243,18 @@ a {
   display: flex;
   align-items: center;
   gap: 3px;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 .tool-links button {
   background: transparent;
   padding: 4px 6px;
   border-color: transparent;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .tool-links button.active {
   background: var(--accent-bg);

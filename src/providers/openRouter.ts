@@ -127,7 +127,9 @@ export const openrouter: Provider = {
                 }
             : { enabled: false, exclude: false },
         response_format:
-          (r.purpose === "notes" || r.purpose === "create") &&
+          (r.purpose === "notes" ||
+            r.purpose === "create" ||
+            r.purpose === "states") &&
           options?.supported_parameters?.includes("response_format")
             ? { type: "json_object" }
             : undefined,
@@ -169,19 +171,25 @@ export const openrouter: Provider = {
     const thoughts = reasoningText(data.choices?.[0]?.message);
     if (thoughts) r.onReasoning?.(thoughts);
     if (
-      (r.purpose === "notes" || r.purpose === "create") &&
+      (r.purpose === "notes" ||
+        r.purpose === "create" ||
+        r.purpose === "states") &&
       data.choices?.[0]?.finish_reason === "length"
     )
       throw new Error(
-        r.purpose === "create"
-          ? "Creation was cut off. Increase Create Output or reduce thinking. Your previous result was kept."
-          : "Note output was cut off. Increase Note Output or lower Note Thinking. No notes were changed.",
+        r.purpose === "states"
+          ? "Internal States output was cut off. Increase Internal States Output or reduce its Thinking budget. Previous states were kept."
+          : r.purpose === "create"
+            ? "Creation was cut off. Increase Create Output or reduce thinking. Your previous result was kept."
+            : "Note output was cut off. Increase Note Output or lower Note Thinking. No notes were changed.",
       );
     if (typeof text !== "string" || !text.trim())
       throw new Error(
-        r.purpose === "notes"
-          ? "No note JSON returned. Disable Note Thinking, increase Note Output, or choose a different note model."
-          : "OpenRouter returned no text. Try a larger Writing Output or another model.",
+        r.purpose === "states"
+          ? "No Internal States JSON returned. Check the Internal States output and thinking settings; previous states were kept."
+          : r.purpose === "notes"
+            ? "No note JSON returned. Disable Note Thinking, increase Note Output, or choose a different note model."
+            : "OpenRouter returned no text. Try a larger Writing Output or another model.",
       );
     r.onToken(text);
     return text;

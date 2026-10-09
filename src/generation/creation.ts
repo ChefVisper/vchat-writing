@@ -108,6 +108,7 @@ export function creationStory(
       ? structuredClone(source.writersBlock)
       : undefined,
     writersBlockTemplate: source.writersBlockTemplate,
+    ff54: source.ff54 ? structuredClone(source.ff54) : undefined,
     notePromptTemplate: source.notePromptTemplate,
     noteConnectionMode: source.noteConnectionMode,
     noteConnection: source.noteConnection

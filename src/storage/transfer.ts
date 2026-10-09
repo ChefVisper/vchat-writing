@@ -9,6 +9,8 @@ import {
 import { packStory, unpackStory } from "./compact";
 import { isWriterBlockConfig } from "../presets/writersBlock";
 import { validLoreEntry, validLorebook } from "../lore/import";
+import { isFF54Config } from "../presets/ff54";
+import { isInternalStateData } from "../generation/internalStates";
 export function exportProject(s: Story, books?: Lorebook[]) {
   s = upgradeNoteCreativity(s);
   return JSON.stringify({
@@ -44,6 +46,13 @@ export function importProject(raw: string): Story {
     throw new Error("This is not a supported Margin project.");
   const s = d.version === 2 ? unpackStory(d) : d.story;
   const base = newStory();
+  if (
+    (s.ff54 !== undefined && !isFF54Config(s.ff54)) ||
+    (s.internalStates !== undefined && !isInternalStateData(s.internalStates))
+  )
+    throw new Error(
+      "Invalid FF 5.4 options or Internal States history. Nothing was imported.",
+    );
   if (
     (s.activeLorebooks !== undefined &&
       (!Array.isArray(s.activeLorebooks) ||
@@ -188,7 +197,9 @@ export function importProject(raw: string): Story {
           ["kobold", "openai", "horde", "openrouter", "nanogpt"].includes(
             t.provider,
           ) &&
-          ["writing", "notes", "rewrite", "create"].includes(t.purpose) &&
+          ["writing", "notes", "rewrite", "create", "states"].includes(
+            t.purpose,
+          ) &&
           typeof t.selected === "boolean",
       ))
   )
@@ -277,6 +288,10 @@ export function importProject(raw: string): Story {
         finite(x.at) &&
         (x.instruction === undefined ||
           (text(x.instruction) && x.instruction.length <= 5000)) &&
+        [x.statesBefore, x.statesAfter].every(
+          (id) =>
+            id === undefined || id === null || (text(id) && id.length <= 250),
+        ) &&
         (!x.notesBefore || validNotes(x.notesBefore)) &&
         (!x.notesAfter || validNotes(x.notesAfter)),
     ) ||
@@ -287,6 +302,9 @@ export function importProject(raw: string): Story {
         text(x.title) &&
         text(x.text) &&
         finite(x.at) &&
+        (x.stateId === undefined ||
+          x.stateId === null ||
+          (text(x.stateId) && x.stateId.length <= 250)) &&
         validNotes(x.notes),
     ) ||
     (s.pending !== undefined &&

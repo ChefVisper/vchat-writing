@@ -1,4 +1,6 @@
 import type { WritingPreset, WriterBlockConfig } from "./presets/writersBlock";
+import type { FF54Config } from "./presets/ff54";
+import type { InternalStateData } from "./generation/internalStates";
 export type Position = "before" | "after";
 export interface ContextText {
   content: string;
@@ -94,6 +96,8 @@ export interface Segment {
   notesBefore?: Note[];
   notesAfter?: Note[];
   instruction?: string;
+  statesBefore?: string | null;
+  statesAfter?: string | null;
 }
 export interface Snapshot {
   id: string;
@@ -101,6 +105,7 @@ export interface Snapshot {
   at: number;
   text: string;
   notes: Note[];
+  stateId?: string | null;
 }
 export interface Story {
   id: string;
@@ -120,6 +125,8 @@ export interface Story {
   writingPreset?: WritingPreset;
   writersBlock?: WriterBlockConfig;
   writersBlockTemplate?: string;
+  ff54?: FF54Config;
+  internalStates?: InternalStateData;
   connection: Connection;
   noteConnectionMode?: "same" | "model" | "separate";
   noteConnection?: Connection;
@@ -147,7 +154,7 @@ export interface Thought {
   at: number;
   model: string;
   provider: Connection["kind"];
-  purpose: "writing" | "notes" | "rewrite" | "create";
+  purpose: "writing" | "notes" | "rewrite" | "create" | "states";
   text: string;
   selected: boolean;
 }

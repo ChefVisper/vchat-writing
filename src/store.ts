@@ -3,6 +3,7 @@ import { newStory, uid, type Story, type Lorebook } from "./types";
 import { attachImportedLorebooks, migrateLorebooks } from "./lore/library";
 import { validLorebook } from "./lore/import";
 import { storage } from "./storage/stories";
+import { statesForText } from "./generation/stateHistory";
 interface State {
   stories: Story[];
   lorebooks: Lorebook[];
@@ -170,6 +171,7 @@ export const useStore = create<State>((set, get) => ({
       text: target,
       past: s.past.slice(0, -1),
       future: [s.text, ...s.future],
+      ...statesForText(s, target, segment?.statesBefore),
       ...(segment?.notesBefore
         ? { notes: structuredClone(segment.notesBefore), pending: [] }
         : {}),
@@ -186,6 +188,7 @@ export const useStore = create<State>((set, get) => ({
       text: s.future[0],
       future: s.future.slice(1),
       past: [...s.past, s.text],
+      ...statesForText(s, s.future[0], segment?.statesAfter),
       ...(segment?.notesAfter
         ? { notes: structuredClone(segment.notesAfter), pending: [] }
         : {}),

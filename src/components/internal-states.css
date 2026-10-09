@@ -1,0 +1,125 @@
+.ff54-settings {
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ff54-settings > summary {
+  font-weight: 600;
+}
+
+.ff54-group {
+  margin: 10px 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--card);
+}
+
+.ff54-module-setting + .ff54-module-setting {
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+}
+
+.ff54-module-setting .toggle {
+  margin-bottom: 3px;
+}
+
+.ff54-module-setting .help {
+  margin-top: 3px;
+}
+
+.internal-states-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.internal-states-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.internal-states-notice {
+  padding: 8px;
+  background: var(--accent-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 0;
+}
+
+.internal-state-block {
+  margin: 12px 0;
+  min-width: 0;
+}
+
+.internal-state-block .field {
+  margin-bottom: 5px;
+}
+
+.internal-state-block textarea {
+  width: 100%;
+  min-height: 100px;
+  max-height: 360px;
+  resize: vertical;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.internal-state-status {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.internal-states-history {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.internal-state-record {
+  margin: 8px 0;
+  padding: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.internal-state-record summary {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.internal-state-record pre {
+  max-height: 250px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.internal-state-record h3 {
+  font-size: 12px;
+  margin: 12px 0 4px;
+}
+
+@media (max-width: 700px) {
+  .internal-states-actions button {
+    min-height: 34px;
+  }
+
+  .internal-state-block textarea {
+    font-size: 16px;
+  }
+}

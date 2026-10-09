@@ -21,6 +21,7 @@ export function greetingStory(source: Story, greeting: Greeting): Story {
     future: [],
     pending: [],
     thoughts: [],
+    internalStates: undefined,
     lastUpdateText: "",
     nextInstruction: "",
     keepInstruction: false,

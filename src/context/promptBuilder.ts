@@ -1,5 +1,6 @@
 import { type Story, type Lorebook } from "../types";
 import { selectedLore } from "../lore/library";
+import { internalStateContext } from "../generation/internalStates";
 import {
   activeWritingTemplate,
   writerBlockRules,
@@ -109,6 +110,15 @@ export function buildPrompt(story: Story, library: Lorebook[] = []) {
     const before: Section[] = [];
     const after: Section[] = [];
     const thoughts = thinkingContext(story);
+    const states = internalStateContext(story);
+    if (states)
+      before.push({
+        name: "Internal States",
+        text: block(
+          "FF 5.4 INTERNAL STATES — fictional continuity; plans are not past events; character knowledge remains limited",
+          states,
+        ),
+      });
     if (thoughts)
       before.push({
         name: "Selected thinking",

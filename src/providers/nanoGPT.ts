@@ -117,13 +117,17 @@ export const nanogpt: Provider = {
     const thought = reasoningText(choice?.message);
     if (thought) r.onReasoning?.(thought);
     if (
-      (r.purpose === "notes" || r.purpose === "create") &&
+      (r.purpose === "notes" ||
+        r.purpose === "create" ||
+        r.purpose === "states") &&
       choice?.finish_reason === "length"
     )
       throw new Error(
-        r.purpose === "create"
-          ? "Creation was cut off. Increase Create Output or reduce thinking. Your previous result was kept."
-          : "Note output was cut off. Increase Note Output or reduce thinking. No notes changed.",
+        r.purpose === "states"
+          ? "Internal States output was cut off. Increase Internal States Output or reduce its Thinking budget. Previous states were kept."
+          : r.purpose === "create"
+            ? "Creation was cut off. Increase Create Output or reduce thinking. Your previous result was kept."
+            : "Note output was cut off. Increase Note Output or reduce thinking. No notes changed.",
       );
     const text = choice?.message?.content;
     if (typeof text !== "string")
