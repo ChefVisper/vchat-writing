@@ -13,6 +13,11 @@ test("NanoGPT thinking stays private, selective context persists and mobile cont
       });
     const body = route.request().postDataJSON();
     sent.push(body);
+    const prose = [
+      "A complete sentence.",
+      "Another sentence followed.",
+      "She finally smiled.",
+    ][sent.length - 1];
     return route.fulfill({
       contentType: "text/event-stream",
       body:
@@ -20,7 +25,7 @@ test("NanoGPT thinking stays private, selective context persists and mobile cont
         sent.length +
         '."}}]}\n\n' +
         'data: {"choices":[{"delta":{"content":"<thi"}}]}\n\n' +
-        'data: {"choices":[{"delta":{"content":"nk>Inline thought.</think> A complete sentence."}}]}\n\ndata: [DONE]\n\n',
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "nk>Inline thought.</think> " + prose } }] })}\n\ndata: [DONE]\n\n`,
     });
   });
   await page.goto("/");
@@ -91,12 +96,12 @@ test("NanoGPT thinking stays private, selective context persists and mobile cont
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expectEditor(
     page,
-    "Beginning. A complete sentence. A complete sentence.",
+    "Beginning. A complete sentence. Another sentence followed.",
   );
   await page.getByRole("button", { name: "Redo", exact: true }).click();
   await expectEditor(
     page,
-    "Beginning. A complete sentence. A complete sentence. A complete sentence.",
+    "Beginning. A complete sentence. Another sentence followed. She finally smiled.",
   );
   await page.keyboard.press("Control+s");
   await page.reload();

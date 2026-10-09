@@ -61,3 +61,77 @@ export function cleanContinuation(text: string) {
     "",
   );
 }
+
+function comparable(text: string) {
+  let normalized = "";
+  const ends: number[] = [];
+  let offset = 0;
+  for (const c of text) {
+    offset += c.length;
+    const value = /\s/u.test(c)
+      ? " "
+      : c.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLowerCase();
+    if (value === " " && normalized.endsWith(" ")) {
+      ends[ends.length - 1] = offset;
+      continue;
+    }
+    normalized += value;
+    for (let i = 0; i < value.length; i++) ends.push(offset);
+  }
+  return { normalized, ends };
+}
+
+export function trimRepeatedPrefix(
+  before: string,
+  addition: string,
+  streaming = false,
+) {
+  if (!before || !addition) return addition;
+  const input = comparable(
+    before.slice(-6000).replace(/(?:\.{2,}|…)\s*$/, ""),
+  ).normalized;
+  const start = addition.length - addition.trimStart().length;
+  const output = comparable(addition.slice(start, start + 6000));
+  const pattern = output.normalized;
+  if (!pattern) return addition;
+  // Hold an early streamed fragment while it can still be an echo of a long
+  // input suffix. Once it diverges, render it or remove the completed overlap.
+  if (streaming && pattern.length < 120) {
+    for (const m of input.matchAll(/(?:^|\s|[.!?])([^\s])/g)) {
+      const suffix = input.slice(m.index! + m[0].length - m[1].length);
+      if (
+        suffix.trim().split(/\s+/).length >= 3 &&
+        suffix.startsWith(pattern) &&
+        pattern.length <= suffix.length
+      )
+        return "";
+    }
+  }
+  const failure = new Array<number>(pattern.length).fill(0);
+  for (let i = 1, k = 0; i < pattern.length; i++) {
+    while (k && pattern[i] !== pattern[k]) k = failure[k - 1];
+    if (pattern[i] === pattern[k]) k++;
+    failure[i] = k;
+  }
+  let matched = 0;
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    while (matched && (matched === pattern.length || pattern[matched] !== c))
+      matched = failure[matched - 1];
+    if (pattern[matched] === c) matched++;
+  }
+  const overlap = pattern.slice(0, matched).trim();
+  const words = overlap.split(/\s+/).length;
+  if (words < 3 && !(words >= 2 && overlap.length >= 20)) return addition;
+  return addition.slice(start + output.ends[matched - 1]);
+}
+
+export function continuationText(
+  before: string,
+  raw: string,
+  removeRepeat: boolean,
+  streaming = false,
+) {
+  const clean = cleanContinuation(raw);
+  return removeRepeat ? trimRepeatedPrefix(before, clean, streaming) : clean;
+}

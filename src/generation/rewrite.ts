@@ -1,4 +1,4 @@
-import type { Story } from "../types";
+import type { Story, Lorebook } from "../types";
 import { activateLore, estimate } from "../context/promptBuilder";
 import { taskInstructions } from "../providers/types";
 import { totalOutput, thinkingContext } from "./thinking";
@@ -8,6 +8,7 @@ export function buildRewritePrompt(
   from: number,
   to: number,
   instruction: string,
+  library: Lorebook[] = [],
 ) {
   if (from < 0 || to > story.text.length || from >= to || !instruction.trim())
     throw new Error("Select a passage and enter an editing instruction.");
@@ -21,7 +22,7 @@ export function buildRewritePrompt(
     ...story.notes
       .filter((n) => n.enabled && n.include)
       .map((n) => `${n.title}: ${n.content}`),
-    ...activateLore(story)
+    ...activateLore(story, library)
       .filter((l) => l.active)
       .map((l) => l.entry.content),
   ]

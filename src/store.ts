@@ -1,8 +1,12 @@
 import { create } from "zustand";
-import { newStory, uid, type Story } from "./types";
+import { newStory, uid, type Story, type Lorebook } from "./types";
+import { attachImportedLorebooks, migrateLorebooks } from "./lore/library";
+import { validLorebook } from "./lore/import";
 import { storage } from "./storage/stories";
 interface State {
   stories: Story[];
+  lorebooks: Lorebook[];
+  setLorebooks: (books: Lorebook[]) => void;
   current: string;
   ready: boolean;
   saving: boolean;
@@ -23,6 +27,7 @@ let initialization: Promise<void> | undefined;
 const pendingSaves = new Map<string, Story>();
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let savingCount = 0;
+let pendingLibrary: Lorebook[] | undefined;
 let lastEdit:
   { storyId: string; text: string; at: number; kind: string } | undefined;
 function persist(story: Story) {
@@ -35,12 +40,15 @@ function flushPending() {
   clearTimeout(saveTimer);
   saveTimer = undefined;
   const stories = [...pendingSaves.values()];
+  const library = pendingLibrary;
+  pendingLibrary = undefined;
   pendingSaves.clear();
-  if (!stories.length) return;
+  if (!stories.length && !library) return;
   savingCount++;
   queue = queue
     .then(async () => {
-      for (const story of stories) await storage.save(story);
+      if (library) await storage.saveLibrary(stories, library);
+      else for (const story of stories) await storage.save(story);
     })
     .then(() => {
       useStore.setState({ saveError: "" });
@@ -52,25 +60,56 @@ function flushPending() {
     })
     .finally(() => {
       savingCount--;
-      useStore.setState({ saving: savingCount > 0 || pendingSaves.size > 0 });
+      useStore.setState({
+        saving: savingCount > 0 || pendingSaves.size > 0 || !!pendingLibrary,
+      });
     });
 }
 export const useStore = create<State>((set, get) => ({
   stories: [],
+  lorebooks: [],
+  setLorebooks: (books) => {
+    const ids = new Set(books.map((b) => b.id));
+    const stories = get().stories.map((s) => {
+      if (!s.activeLorebooks?.some((id) => !ids.has(id))) return s;
+      const changed = {
+        ...s,
+        activeLorebooks: s.activeLorebooks.filter((id) => ids.has(id)),
+      };
+      pendingSaves.set(s.id, changed);
+      return changed;
+    });
+    set({ lorebooks: books, stories });
+    pendingLibrary = books;
+    set({ saving: true });
+    if (!saveTimer) saveTimer = setTimeout(flushPending, 500);
+  },
   current: "",
   ready: false,
   saving: false,
   saveError: "",
   init: () =>
     (initialization ??= (async () => {
+      let stories: Story[] = [];
       try {
-        let stories = await storage.all();
+        stories = await storage.all();
+        const savedBooks = await storage.pref("lorebooks");
+        if (
+          savedBooks !== undefined &&
+          (!Array.isArray(savedBooks) || !savedBooks.every(validLorebook))
+        )
+          throw new Error("Invalid saved lorebook library.");
+        const migrated = migrateLorebooks(stories, savedBooks || []);
+        if (migrated.changed)
+          await storage.saveLibrary(migrated.stories, migrated.library);
+        stories = migrated.stories;
         if (!stories.length) {
           stories = [newStory(true)];
           await storage.save(stories[0]);
         }
         set({
           stories,
+          lorebooks: migrated.library,
           current: [...stories].sort((a, b) => b.modified - a.modified)[0].id,
           ready: true,
         });
@@ -79,8 +118,8 @@ export const useStore = create<State>((set, get) => ({
         set({
           ready: true,
           saveError: "Local storage unavailable. Your work is not being saved.",
-          stories: [story],
-          current: story.id,
+          stories: stories.length ? stories : [story],
+          current: stories.length ? stories[0].id : story.id,
         });
       }
     })()),
@@ -153,9 +192,11 @@ export const useStore = create<State>((set, get) => ({
     });
   },
   add: (story) => {
-    const s = story
-      ? { ...story, id: uid(), modified: Date.now() }
-      : newStory();
+    let s = story ? { ...story, id: uid(), modified: Date.now() } : newStory();
+    const attached = attachImportedLorebooks(s, get().lorebooks);
+    s = attached.stories[0];
+    if (attached.library.length !== get().lorebooks.length)
+      get().setLorebooks(attached.library);
     set((x) => ({ stories: [...x.stories, s], current: s.id }));
     persist(s);
   },

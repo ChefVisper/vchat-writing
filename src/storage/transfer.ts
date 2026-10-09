@@ -1,18 +1,28 @@
 import {
   upgradePromptTemplate,
   upgradeNoteCreativity,
+  upgradeContinuationSettings,
   newStory,
   type Story,
+  type Lorebook,
 } from "../types";
 import { packStory, unpackStory } from "./compact";
 import { isWriterBlockConfig } from "../presets/writersBlock";
-export function exportProject(s: Story) {
+import { validLoreEntry, validLorebook } from "../lore/import";
+export function exportProject(s: Story, books?: Lorebook[]) {
   s = upgradeNoteCreativity(s);
   return JSON.stringify({
     format: "margin-project",
     version: 2,
     ...packStory({
       ...s,
+      ...(books
+        ? {
+            lorebookCopies: books.filter((b) =>
+              s.activeLorebooks?.includes(b.id),
+            ),
+          }
+        : {}),
       noteConnection: s.noteConnection
         ? {
             kind: s.noteConnection.kind,
@@ -34,6 +44,22 @@ export function importProject(raw: string): Story {
     throw new Error("This is not a supported Margin project.");
   const s = d.version === 2 ? unpackStory(d) : d.story;
   const base = newStory();
+  if (
+    (s.activeLorebooks !== undefined &&
+      (!Array.isArray(s.activeLorebooks) ||
+        s.activeLorebooks.length > 500 ||
+        !s.activeLorebooks.every(
+          (id: unknown) => typeof id === "string" && id.length <= 250,
+        ) ||
+        new Set(s.activeLorebooks).size !== s.activeLorebooks.length)) ||
+    (s.lorebookCopies !== undefined &&
+      (!Array.isArray(s.lorebookCopies) ||
+        s.lorebookCopies.length > 500 ||
+        !s.lorebookCopies.every(validLorebook) ||
+        new Set(s.lorebookCopies.map((b: Lorebook) => b.id)).size !==
+          s.lorebookCopies.length))
+  )
+    throw new Error("Invalid shared lorebook references or copies.");
   if (
     (s.writingPreset !== undefined &&
       !["default", "writers-block"].includes(s.writingPreset)) ||
@@ -179,6 +205,7 @@ export function importProject(raw: string): Story {
       throw new Error("Invalid note.");
   }
   for (const l of s.lore) {
+    if (!validLoreEntry(l)) throw new Error("Invalid lore entry.");
     if (
       typeof l.content !== "string" ||
       typeof l.keywords !== "string" ||
@@ -276,24 +303,27 @@ export function importProject(raw: string): Story {
     throw new Error(
       "Invalid project history or context data. Nothing was imported.",
     );
-  return upgradeNoteCreativity({
-    ...base,
-    ...s,
-    writingPreset: s.writingPreset ?? "default",
-    noteConnection: s.noteConnection
-      ? {
-          kind: s.noteConnection.kind,
-          url: s.noteConnection.url,
-          model: s.noteConnection.model,
-        }
-      : undefined,
-    promptTemplate: upgradePromptTemplate(s.promptTemplate),
-    connection: {
-      kind: s.connection.kind,
-      url: s.connection.url,
-      model: s.connection.model,
-    },
-  });
+  return upgradeContinuationSettings(
+    upgradeNoteCreativity({
+      ...base,
+      ...s,
+      continuationCleanupVersion: s.continuationCleanupVersion,
+      writingPreset: s.writingPreset ?? "default",
+      noteConnection: s.noteConnection
+        ? {
+            kind: s.noteConnection.kind,
+            url: s.noteConnection.url,
+            model: s.noteConnection.model,
+          }
+        : undefined,
+      promptTemplate: upgradePromptTemplate(s.promptTemplate),
+      connection: {
+        kind: s.connection.kind,
+        url: s.connection.url,
+        model: s.connection.model,
+      },
+    }),
+  );
 }
 export function download(name: string, content: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));

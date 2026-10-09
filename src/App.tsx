@@ -56,6 +56,7 @@ import { providers } from "./providers";
 import {
   retryBase,
   cleanContinuation,
+  continuationText,
   trimIncomplete,
   branchTitle,
 } from "./generation/history";
@@ -69,7 +70,8 @@ import {
 } from "./generation/stateUpdater";
 import { exportProject, importProject, download } from "./storage/transfer";
 import { NotesPanel } from "./components/NotesPanel";
-import { ContextPanel, LorebookEditor } from "./components/ContextPanel";
+import { ContextPanel } from "./components/ContextPanel";
+import { LorebookPanel } from "./components/LorebookPanel";
 import {
   ConnectionsPanel,
   GenerationSettings,
@@ -210,8 +212,11 @@ export default function App() {
     }
   }, [busy]);
   const prompt = useMemo(
-    () => (story && panel === "prompt" && !busy ? buildPrompt(story) : null),
-    [story, panel, busy],
+    () =>
+      story && panel === "prompt" && !busy
+        ? buildPrompt(story, store.lorebooks)
+        : null,
+    [story, panel, busy, store.lorebooks],
   );
   useEffect(() => {
     const timer = setTimeout(() => setCountText(story?.text ?? ""), 250);
@@ -297,6 +302,7 @@ export default function App() {
         rewrite.from,
         rewrite.to,
         rewriteInstruction,
+        store.lorebooks,
       );
       await providers[s.connection.kind].generate({
         prompt,
@@ -490,7 +496,7 @@ export default function App() {
             : segment.instruction,
         };
       }
-      const assembled = buildPrompt(s);
+      const assembled = buildPrompt(s, store.lorebooks);
       if (assembled.invalidTemplate)
         throw new Error(
           "Prompt template needs both {{context}} and {{story}}. Edit it in Prompt.",
@@ -518,7 +524,16 @@ export default function App() {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const renderDraft = () => {
         timer = undefined;
-        patch({ text: before + cleanContinuation(raw) });
+        patch({
+          text:
+            before +
+            continuationText(
+              before,
+              raw,
+              s.settings.trimRepeatedPrefix ?? true,
+              true,
+            ),
+        });
         scrollEditorToBottom();
       };
       try {
@@ -536,9 +551,17 @@ export default function App() {
             if (!timer) timer = setTimeout(renderDraft, 80);
           },
         });
-        if (!cleanContinuation(raw).trim())
+        if (
+          !continuationText(
+            before,
+            raw,
+            s.settings.trimRepeatedPrefix ?? true,
+          ).trim()
+        )
           throw new Error(
-            "The model returned no story text. Increase Writing Output or lower Writing Thinking.",
+            cleanContinuation(raw).trim()
+              ? "The model only repeated existing text. No new prose was added. Retry or edit the prompt."
+              : "The model returned no story text. Increase Writing Output or lower Writing Thinking.",
           );
         completed = !c.signal.aborted;
       } catch (e) {
@@ -546,7 +569,11 @@ export default function App() {
       } finally {
         clearTimeout(timer);
         thoughts.finish();
-        const clean = cleanContinuation(raw);
+        const clean = continuationText(
+          before,
+          raw,
+          s.settings.trimRepeatedPrefix ?? true,
+        );
         const addition =
           s.settings.trimIncomplete && !c.signal.aborted
             ? trimIncomplete(before, clean)
@@ -1290,7 +1317,12 @@ export default function App() {
                         <ContextPanel story={story} patch={patch} />
                       )}
                       {panel === "lore" && (
-                        <LorebookEditor story={story} patch={patch} />
+                        <LorebookPanel
+                          story={story}
+                          books={store.lorebooks}
+                          patch={patch}
+                          setBooks={store.setLorebooks}
+                        />
                       )}
                       {panel === "connection" && (
                         <ConnectionsPanel
@@ -1442,7 +1474,7 @@ export default function App() {
                               onClick={() =>
                                 download(
                                   story.title + ".json",
-                                  exportProject(story),
+                                  exportProject(story, store.lorebooks),
                                   "application/json",
                                 )
                               }

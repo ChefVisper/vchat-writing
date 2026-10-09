@@ -39,6 +39,18 @@ export interface Lore {
   scanDepth: number;
   budget: number;
   probability: number;
+  primaryKeys?: string[];
+  secondaryKeys?: string[];
+  selectiveLogic?: "and-any" | "and-all" | "not-any" | "not-all";
+  matchWholeWords?: boolean;
+}
+export interface Lorebook {
+  id: string;
+  title: string;
+  entries: Lore[];
+  modified: number;
+  source?: string;
+  warnings?: string[];
 }
 export interface Settings {
   temperature: number;
@@ -61,6 +73,7 @@ export interface Settings {
   stops: string;
   streaming: boolean;
   trimIncomplete: boolean;
+  trimRepeatedPrefix?: boolean;
   thinkingMaxTokens: number;
   noteThinkingMaxTokens: number;
   thinkingPrefix: string;
@@ -98,8 +111,11 @@ export interface Story {
   author: ContextText;
   notes: Note[];
   lore: Lore[];
+  activeLorebooks?: string[];
+  lorebookCopies?: Lorebook[]; // Portable project copies; merged into the shared library on import.
   loreBudget: number;
   settings: Settings;
+  continuationCleanupVersion?: number;
   promptTemplate?: string;
   writingPreset?: WritingPreset;
   writersBlock?: WriterBlockConfig;
@@ -163,7 +179,8 @@ export const defaults: Settings = {
   seed: -1,
   stops: "",
   streaming: true,
-  trimIncomplete: false,
+  trimIncomplete: true,
+  trimRepeatedPrefix: true,
   thinkingMaxTokens: 2048,
   noteThinkingMaxTokens: 2048,
   thinkingPrefix: "<think>",
@@ -253,6 +270,18 @@ export function upgradeNoteCreativity(story: Story): Story {
     })),
   };
 }
+export function upgradeContinuationSettings(story: Story): Story {
+  if (story.continuationCleanupVersion === 1) return story;
+  return {
+    ...story,
+    continuationCleanupVersion: 1,
+    settings: {
+      ...story.settings,
+      trimIncomplete: true,
+      trimRepeatedPrefix: story.settings.trimRepeatedPrefix ?? true,
+    },
+  };
+}
 export const newNote = (): Note => ({
   id: uid(),
   title: "Untitled note",
@@ -318,6 +347,7 @@ export function newStory(sample = false): Story {
     lore: [],
     loreBudget: 1000,
     settings: { ...defaults },
+    continuationCleanupVersion: 1,
     promptTemplate: DEFAULT_PROMPT_TEMPLATE,
     writingPreset: "default",
     connection: { kind: "kobold", url: "http://localhost:5001", model: "" },

@@ -1,4 +1,5 @@
-import { type Story, type Lore } from "../types";
+import { type Story, type Lorebook } from "../types";
+import { selectedLore } from "../lore/library";
 import {
   activeWritingTemplate,
   writerBlockRules,
@@ -12,38 +13,53 @@ const keys = (s: string) =>
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
-export function activateLore(story: Story) {
-  if (!story.lore.length) return [];
+export function activateLore(story: Story, library: Lorebook[] = []) {
+  const entries = selectedLore(story, library);
+  if (!entries.length) return [];
   let budget = story.loreBudget;
   let storyHash = 0;
   for (const c of story.text)
     storyHash = (Math.imul(31, storyHash) + c.charCodeAt(0)) | 0;
   const paragraphs = story.text.split("\n\n");
-  return [...story.lore]
+  return [...entries]
     .sort((a, b) => b.priority - a.priority)
     .map((entry) => {
       const recent =
         entry.scanDepth > 0
           ? paragraphs.slice(-entry.scanDepth).join("\n\n")
           : "";
-      const has = (key: string) =>
-        entry.caseSensitive
+      const has = (key: string) => {
+        if (entry.matchWholeWords) {
+          const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          return new RegExp(
+            `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,
+            entry.caseSensitive ? "u" : "iu",
+          ).test(recent);
+        }
+        return entry.caseSensitive
           ? recent.includes(key)
           : recent.toLowerCase().includes(key.toLowerCase());
+      };
+      const primary = entry.primaryKeys ?? keys(entry.keywords);
+      const secondary = entry.secondaryKeys ?? keys(entry.secondary);
       let reason = !entry.enabled
         ? "Disabled"
         : entry.constant
           ? "Always active"
-          : keys(entry.keywords).some(has)
+          : primary.some(has)
             ? "Keyword match"
             : "No matching keyword";
-      let active =
-        entry.enabled && (entry.constant || keys(entry.keywords).some(has));
+      let active = entry.enabled && (entry.constant || primary.some(has));
       if (
         active &&
         !entry.constant &&
-        keys(entry.secondary).length &&
-        !keys(entry.secondary).some(has)
+        secondary.length &&
+        !{
+          "and-any": () => secondary.some(has),
+          "and-all": () => secondary.every(has),
+          "not-any": () => !secondary.some(has),
+          "not-all": () => !secondary.every(has),
+        }[entry.selectiveLogic ?? "and-any"]()
       ) {
         active = false;
         reason = "Secondary keyword missing";
@@ -74,8 +90,8 @@ export interface Section {
 }
 const block = (name: string, content: string) =>
   content ? `[${name}]\n${content}\n[/${name}]` : "";
-export function buildPrompt(story: Story) {
-  const lore = activateLore(story);
+export function buildPrompt(story: Story, library: Lorebook[] = []) {
+  const lore = activateLore(story, library);
   const template = activeWritingTemplate(story);
   const presetRules = writerBlockRules(story);
   const invalidTemplate =

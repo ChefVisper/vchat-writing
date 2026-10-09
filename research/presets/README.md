@@ -2,6 +2,8 @@
 
 Downloaded and parsed these public JSON files locally. Copies and `inspection.json` remain in this directory and are excluded from Git. Writer's Block now has a separate, opt-in co-writing adaptation; see [implementation notes](../../src/presets/README.md). External regex scripts and SillyTavern macros are not executed.
 
+See the [FF 5.4 Internal States adaptation assessment](internal-states.md) for the inspected tracker architecture and a proposal using separate, validated vChat notes.
+
 | Preset | Local file | Size | Prompt blocks |
 | --- | --- | ---: | ---: |
 | Freaky Frankenstein 5.4 Internal States | `Freaky Frankenstein 5.4.json` | 144,032 bytes | 63 |

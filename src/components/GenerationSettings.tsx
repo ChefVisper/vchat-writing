@@ -497,6 +497,18 @@ export function GenerationSettings({
             patch({ settings: { ...s, trimIncomplete } })
           }
         />
+        <Toggle
+          label="Trim repeated continuation prefix"
+          value={s.trimRepeatedPrefix ?? true}
+          onChange={(trimRepeatedPrefix) =>
+            patch({ settings: { ...s, trimRepeatedPrefix } })
+          }
+        />
+        <p className="help">
+          Removes a substantial copied prefix that matches the manuscript
+          ending. Applies while streaming and on Stop; short common words are
+          kept. Only AI output is changed.
+        </p>
         <p className="help">
           Removes an unfinished final sentence from completed AI output, never
           from your own text. Manual Stop keeps partial output. Sentence
