@@ -11,6 +11,7 @@ import { isWriterBlockConfig } from "../presets/writersBlock";
 import { validLoreEntry, validLorebook } from "../lore/import";
 import { isFF54Config } from "../presets/ff54";
 import { isInternalStateData } from "../generation/internalStates";
+import { validateGameProject } from "../vgame/state";
 export function exportProject(s: Story, books?: Lorebook[]) {
   s = upgradeNoteCreativity(s);
   return JSON.stringify({
@@ -46,6 +47,11 @@ export function importProject(raw: string): Story {
     throw new Error("This is not a supported Margin project.");
   const s = d.version === 2 ? unpackStory(d) : d.story;
   const base = newStory();
+  if (s.vgame !== undefined) {
+    if (!validateGameProject(s.vgame))
+      throw new Error("Invalid Vgame project. Nothing was imported.");
+    s.vgame = { ...s.vgame, actionLock: undefined };
+  }
   if (
     (s.ff54 !== undefined && !isFF54Config(s.ff54)) ||
     (s.internalStates !== undefined && !isInternalStateData(s.internalStates))
@@ -197,7 +203,7 @@ export function importProject(raw: string): Story {
           ["kobold", "openai", "horde", "openrouter", "nanogpt"].includes(
             t.provider,
           ) &&
-          ["writing", "notes", "rewrite", "create", "states"].includes(
+          ["writing", "notes", "rewrite", "create", "states", "game"].includes(
             t.purpose,
           ) &&
           typeof t.selected === "boolean",

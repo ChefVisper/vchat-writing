@@ -1,0 +1,495 @@
+.vgame-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 6px;
+  color: var(--text);
+}
+.vgame-workspace button,
+.vgame-workspace select,
+.vgame-workspace input,
+.vgame-workspace textarea {
+  border-color: var(--border);
+}
+.vgame-workspace button {
+  background: var(--accent-bg);
+}
+.vgame-workspace button:hover {
+  background: var(--hover);
+}
+.vgame-nav {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+}
+.vgame-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  gap: 3px;
+  scrollbar-width: thin;
+}
+.vgame-tabs button {
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: transparent;
+}
+.vgame-tabs button.active {
+  background: var(--accent-bg);
+}
+.vgame-nav-actions {
+  display: flex;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.vgame-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 7px;
+}
+.vgame-body.vgame-drawer-left {
+  flex-direction: row-reverse;
+}
+.vgame-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 6px;
+}
+.vgame-page-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  font-size: 12px;
+}
+.vgame-page-head select {
+  max-width: 340px;
+  padding: 4px 7px;
+}
+.vgame-page-count {
+  color: var(--muted);
+  white-space: nowrap;
+  margin-left: auto;
+}
+.vgame-prose {
+  flex: 1;
+  min-height: 180px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px;
+  overflow: hidden;
+}
+.vgame-prose .story-editor {
+  height: 100%;
+}
+.vgame-prose .cm-editor {
+  height: 100%;
+}
+.vgame-prose .cm-content {
+  color: var(--text);
+}
+.vgame-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 16px;
+  padding: 3px 5px;
+  max-height: 150px;
+  overflow: auto;
+}
+.vgame-workspace .vgame-choice {
+  color: #8db9ee;
+  border: 0;
+  background: transparent;
+  padding: 4px 1px;
+  text-align: left;
+  justify-content: flex-start;
+}
+:root[data-theme="light"] .vgame-workspace .vgame-choice {
+  color: #225aa0;
+}
+.vgame-syntax-error {
+  text-decoration: underline wavy #ed7979;
+  text-decoration-skip-ink: none;
+}
+.vgame-completions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+  padding: 5px;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.vgame-workspace .vgame-choice:hover {
+  text-decoration: underline;
+  background: transparent;
+}
+.vgame-choice:disabled {
+  color: var(--muted);
+}
+.vgame-compose {
+  display: flex;
+  gap: 6px;
+  min-height: 70px;
+  flex-shrink: 0;
+}
+.vgame-compose textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 64px;
+  max-height: 200px;
+  font-size: 14px;
+}
+.vgame-compose-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.vgame-compose-actions button {
+  min-height: 28px;
+}
+.vgame-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-height: 27px;
+}
+.vgame-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+.vgame-meta {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.vgame-side {
+  width: 370px;
+  max-width: 42%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.vgame-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.vgame-side-body {
+  overflow: auto;
+  min-height: 0;
+  padding: 0 10px 10px;
+  flex: 1;
+  scrollbar-width: thin;
+}
+.vgame-side .field {
+  margin: 10px 0;
+}
+.vgame-side .help {
+  font-size: 12px;
+}
+.vgame-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 8px;
+}
+.vgame-form-grid .field {
+  min-width: 0;
+}
+.vgame-form-grid select,
+.vgame-form-grid input {
+  width: 100%;
+}
+.vgame-card {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--card);
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.vgame-card summary {
+  font-size: 13px;
+}
+.vgame-card > .row {
+  flex-wrap: wrap;
+}
+.vgame-card h3 {
+  margin: 4px 0 6px;
+  font-size: 13px;
+}
+.vgame-card pre,
+.vgame-diff,
+.vgame-prompt-preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 300px;
+  overflow: auto;
+}
+.vgame-diff {
+  max-height: 190px;
+  color: var(--muted);
+}
+.vgame-widget-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.vgame-page-widgets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 140px;
+  overflow: auto;
+}
+.vgame-widget {
+  padding: 7px 9px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  min-width: 135px;
+  font-size: 13px;
+}
+.vgame-widget-name {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+.vgame-widget progress {
+  width: 100%;
+  height: 9px;
+  accent-color: #7c8c9f;
+  display: block;
+  margin-top: 5px;
+}
+.vgame-widget-value {
+  overflow-wrap: anywhere;
+}
+.vgame-widget-badge .vgame-widget-value {
+  display: inline-flex;
+  padding: 2px 6px;
+  background: var(--accent-bg);
+  border-radius: 3px;
+}
+.vgame-page-widgets .vgame-widget {
+  flex: 1;
+  max-width: 250px;
+}
+.vgame-syntax {
+  min-height: 230px;
+  height: 300px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.vgame-syntax .cm-editor {
+  height: 100%;
+}
+.vgame-syntax .cm-scroller {
+  overflow: auto;
+  font:
+    12px/1.5 Consolas,
+    monospace;
+}
+.vgame-syntax .cm-content {
+  padding: 8px;
+}
+.vgame-syntax-command {
+  color: #9fbbd8;
+}
+.vgame-syntax-string {
+  color: #c1c5a5;
+}
+.vgame-syntax-keyword {
+  color: #bcadd5;
+}
+:root[data-theme="light"] .vgame-syntax-command {
+  color: #345a88;
+}
+:root[data-theme="light"] .vgame-syntax-string {
+  color: #596637;
+}
+:root[data-theme="light"] .vgame-syntax-keyword {
+  color: #725180;
+}
+.vgame-syntax-error {
+  text-decoration: underline wavy #ec9393;
+}
+.vgame-source-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0;
+}
+.vgame-source-tools select {
+  max-width: 190px;
+}
+.vgame-source-tools button {
+  font-size: 12px;
+}
+.vgame-preview {
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 8px;
+  margin-top: 8px;
+}
+.vgame-preview p {
+  white-space: pre-wrap;
+  font-size: 12px;
+  max-height: 150px;
+  overflow: auto;
+}
+.vgame-alert {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 7px 9px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  background: var(--panel);
+}
+.vgame-alert.error {
+  color: #f1aaaa;
+}
+.vgame-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: #080a0caa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 15px;
+}
+.vgame-confirm {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: min(560px, 100%);
+  max-height: 85dvh;
+  overflow: auto;
+  padding: 14px;
+}
+.vgame-confirm h2 {
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+.vgame-confirm .row {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.vgame-empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 0;
+}
+.vgame-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.vgame-check input {
+  width: auto;
+  margin: 0;
+}
+.vgame-history-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 7px 0;
+}
+.vgame-pages-list button {
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+  background: transparent;
+}
+.vgame-pages-list button.active {
+  background: var(--accent-bg);
+}
+.vgame-busy {
+  margin-left: auto;
+}
+@media (max-width: 700px) {
+  .vgame-side {
+    position: fixed;
+    inset: 8px;
+    width: auto;
+    max-width: none;
+    z-index: 61;
+  }
+  .vgame-workspace .vgame-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: #080a0c99;
+    z-index: 60;
+    border: 0;
+    padding: 0;
+  }
+  .vgame-side-head {
+    padding: 9px 10px;
+    min-height: 38px;
+  }
+  .vgame-side-body {
+    padding-bottom: 20px;
+  }
+  .vgame-compose {
+    min-height: 77px;
+  }
+  .vgame-compose textarea {
+    font-size: 16px;
+  }
+  .vgame-prose {
+    padding: 8px;
+  }
+  .vgame-page-head select {
+    max-width: 58vw;
+  }
+  .vgame-nav-actions button {
+    padding: 5px;
+  }
+  .vgame-nav-actions .vgame-label {
+    display: none;
+  }
+  .vgame-tabs button {
+    padding: 5px 7px;
+  }
+  .vgame-compose-actions {
+    gap: 3px;
+  }
+  .vgame-compose-actions button {
+    min-height: 32px;
+    font-size: 12px;
+  }
+  .vgame-bottom {
+    min-height: 30px;
+  }
+}
+@media (min-width: 701px) {
+  .vgame-backdrop {
+    display: none;
+  }
+}

@@ -1,6 +1,22 @@
 # Margin
 
-A local-first, continuous-prose writing desk built with React, TypeScript, and Vite. Your document is one editable manuscript; AI continuations are tracked separately for retry and branching.
+A local-first writing desk built with React, TypeScript, and Vite. Vchat keeps one editable manuscript; the optional Vgame workspace adds pages, choices and an editable game state.
+
+## Vchat and Vgame
+
+Open **Main settings** in the top bar and choose **Vchat** or **Vgame**. The choice persists in this browser. Vchat retains its blue palette and existing writing workflow; Vgame uses gray surfaces and blue choice links. The first switch copies the current manuscript into Vgame's first page. Subsequent changes are independent: switching back preserves the original manuscript and its undo history. Both workspaces are included in the story's full project JSON.
+
+Vgame has a free text input, **Append text**, **New page**, and **Generate**. Append and page navigation never call a model by themselves. Choices can change values, navigate and explicitly request one generation. Once-only choices and request locks prevent duplicate effects. Failed/cancelled generation keeps already committed choice effects; undo the choice explicitly to reverse them. Page browsing does not reverse decisions; game Undo/Redo and history restoration do. Branches receive an independent copy of the game.
+
+**World**, **UI**, **Pages** and **Instructions** provide visual editors. **V-HTML** provides a source editor with syntax colors, command snippets, validation preview and explicit Apply. Both edit the same project state. Global widgets live in a collapsible drawer; page/event widgets follow their declared lifecycle without deleting their underlying values. See the [V-HTML grammar, examples and supported-command reference](docs/vhtml.md).
+
+AI returns narrative separately from proposed game commands. **Inbox** defaults to **Manual** approval, with editable suggestions, diffs, dependencies and reject/approve controls. **Smart** automatically applies only permitted routine value changes. **Auto** applies permitted, validated changes; destructive changes and new generation requests still require review. Commands cannot execute HTML, JavaScript, arbitrary styles, network requests or files, or grant AI new authority. Invalid suggestions enter the audit rather than changing state. Narrative remains plain text, including quoted commands.
+
+**Context** contains Vgame's own Output, Thinking, Thinking Output, Max Context, history-page allowance, reserve and behavior profile. It shares the selected writing provider/key/model and sampler settings. Only relevant enabled global/scene/entity/event instructions are sent. Protected rules, included notes/memory, active lore and approved world data precede the current-page tail and recent pages; `description-noai` is omitted. Pending proposals are not supplied as established facts. Provider context caps and generation allowances constrain input; token counts are approximate. Excluded pages remain saved. Exposed reasoning stays in Thinking and is excluded from context unless selected and enabled through the existing thinking controls.
+
+**Save / Load** opens game History: export/import complete checkpoints, restore retained revisions, or branch. **My stories → Export** backs up the entire story, including both workspaces. Vgame retains the latest 100 undo actions as compact diffs and all saved pages (up to 2,000; 2 million characters per page). Serialized game JSON is limited to 40 × 1,024² UTF-16 code units. Checkpoint imports allow up to 128 MiB of file bytes so valid compact exports can be restored even with multibyte Unicode text. The source editor is for definitions/current-page edits, not a substitute for a complete JSON backup: large/other page prose remains in Pages and JSON. Existing projects without game data still load unchanged; imported/crashed request locks are cleared without resetting used choices.
+
+Generation waits for a complete response so truncated JSON never applies partially. Stopping discards that unfinished response; it does not stream partial game prose. Automatic summaries, rich input/menu widgets, real-time timers and other future grammar commands are not implemented; unsupported commands/properties produce errors. No extra server or native dependency is needed, including on Termux.
 
 ## Run locally
 

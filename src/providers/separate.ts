@@ -19,7 +19,8 @@ export function separate(provider: Provider): Provider {
       const structured =
         r.purpose === "notes" ||
         r.purpose === "create" ||
-        r.purpose === "states";
+        r.purpose === "states" ||
+        r.purpose === "game";
       const controller = new AbortController();
       const abort = () => controller.abort(r.signal.reason);
       r.signal.addEventListener("abort", abort, { once: true });

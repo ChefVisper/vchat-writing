@@ -119,15 +119,18 @@ export const nanogpt: Provider = {
     if (
       (r.purpose === "notes" ||
         r.purpose === "create" ||
-        r.purpose === "states") &&
+        r.purpose === "states" ||
+        r.purpose === "game") &&
       choice?.finish_reason === "length"
     )
       throw new Error(
-        r.purpose === "states"
-          ? "Internal States output was cut off. Increase Internal States Output or reduce its Thinking budget. Previous states were kept."
-          : r.purpose === "create"
-            ? "Creation was cut off. Increase Create Output or reduce thinking. Your previous result was kept."
-            : "Note output was cut off. Increase Note Output or reduce thinking. No notes changed.",
+        r.purpose === "game"
+          ? "Vgame response was cut off. Increase Output or reduce Thinking Output; no game changes were applied."
+          : r.purpose === "states"
+            ? "Internal States output was cut off. Increase Internal States Output or reduce its Thinking budget. Previous states were kept."
+            : r.purpose === "create"
+              ? "Creation was cut off. Increase Create Output or reduce thinking. Your previous result was kept."
+              : "Note output was cut off. Increase Note Output or reduce thinking. No notes changed.",
       );
     const text = choice?.message?.content;
     if (typeof text !== "string")

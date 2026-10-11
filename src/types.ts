@@ -1,6 +1,7 @@
 import type { WritingPreset, WriterBlockConfig } from "./presets/writersBlock";
 import type { FF54Config } from "./presets/ff54";
 import type { InternalStateData } from "./generation/internalStates";
+import type { GameProject } from "./vgame/types";
 export type Position = "before" | "after";
 export interface ContextText {
   content: string;
@@ -127,6 +128,7 @@ export interface Story {
   writersBlockTemplate?: string;
   ff54?: FF54Config;
   internalStates?: InternalStateData;
+  vgame?: GameProject;
   connection: Connection;
   noteConnectionMode?: "same" | "model" | "separate";
   noteConnection?: Connection;
@@ -154,7 +156,7 @@ export interface Thought {
   at: number;
   model: string;
   provider: Connection["kind"];
-  purpose: "writing" | "notes" | "rewrite" | "create" | "states";
+  purpose: "writing" | "notes" | "rewrite" | "create" | "states" | "game";
   text: string;
   selected: boolean;
 }

@@ -1,4 +1,12 @@
-import { useEffect, useLayoutEffect, useState, useRef, useMemo } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useRef,
+  useMemo,
+  lazy,
+  Suspense,
+} from "react";
 import {
   BookOpen,
   Brain,
@@ -35,6 +43,7 @@ import {
   Check,
   Square,
   ChevronDown,
+  Settings,
 } from "lucide-react";
 import { useStore } from "./store";
 import {
@@ -75,6 +84,7 @@ import { ContextPanel } from "./components/ContextPanel";
 import { LorebookPanel } from "./components/LorebookPanel";
 import {
   ConnectionsPanel,
+  ConnectionPanel,
   GenerationSettings,
 } from "./components/GenerationSettings";
 import { PromptInspector } from "./components/PromptInspector";
@@ -89,12 +99,19 @@ import {
   validateInternalStates,
 } from "./generation/internalStates";
 import { statePointer, statesForText } from "./generation/stateHistory";
+import { MainSettings, type WorkspaceMode } from "./components/MainSettings";
+import { createGameProject } from "./vgame/state";
 import { CreateWorkspace } from "./components/CreateWorkspace";
 import { GreetingsPanel } from "./components/GreetingsPanel";
 import {
   ManuscriptEditor,
   type ManuscriptHandle,
 } from "./components/ManuscriptEditor";
+const GameWorkspace = lazy(() =>
+  import("./components/GameWorkspace").then((module) => ({
+    default: module.GameWorkspace,
+  })),
+);
 const tabs = [
   { id: "greetings", label: "Greetings", icon: MessageSquarePlus },
   { id: "thinking", label: "Thinking", icon: Brain },
@@ -114,6 +131,10 @@ export default function App() {
   const [library, setLibrary] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
+  const [gameBusy, setGameBusy] = useState(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("vchat");
+  const [mainSettingsOpen, setMainSettingsOpen] = useState(false);
+  const gameConnectionDialog = useRef<HTMLElement | null>(null);
   const [panel, setPanel] = useState<string | null>(null);
   const [instructionOpen, setInstructionOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -191,6 +212,12 @@ export default function App() {
         }
       })
       .catch(() => {});
+    storage
+      .pref("workspace-mode")
+      .then((mode) => {
+        if (mode === "vgame" || mode === "vchat") setWorkspaceMode(mode);
+      })
+      .catch(() => {});
     return () => {
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", flush);
@@ -199,6 +226,75 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
+  useEffect(() => {
+    document.documentElement.dataset.workspace = workspaceMode;
+  }, [workspaceMode]);
+  useEffect(() => {
+    const dialog = gameConnectionDialog.current;
+    if (
+      workspaceMode !== "vgame" ||
+      panel !== "connection" ||
+      !dialog ||
+      creating ||
+      library
+    )
+      return;
+    const previous = document.activeElement as HTMLElement | null;
+    dialog.querySelector<HTMLButtonElement>("button")?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setPanel(null);
+      }
+      if (event.key !== "Tab") return;
+      const targets = [
+        ...dialog.querySelectorAll<HTMLElement>(
+          'button:not(:disabled),select:not(:disabled),input:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
+        ),
+      ];
+      const first = targets[0],
+        last = targets.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      }
+      if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    dialog.addEventListener("keydown", trap);
+    return () => {
+      dialog.removeEventListener("keydown", trap);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [workspaceMode, panel, creating, library]);
+  useEffect(() => {
+    if (workspaceMode === "vgame" && story && !story.vgame) {
+      if (story.text.length > 2_000_000) {
+        setWorkspaceMode("vchat");
+        setError(
+          "This manuscript exceeds Vgame's two-million-character page limit. Start a smaller game story or split it before switching.",
+        );
+        void storage.setPref("workspace-mode", "vchat").catch(() => {});
+      } else patch({ vgame: createGameProject(story.text) });
+    }
+  }, [workspaceMode, story?.id, story?.vgame]);
+  function switchWorkspace(mode: WorkspaceMode) {
+    if (busy || createBusy || gameBusy) return;
+    setWorkspaceMode(mode);
+    setCreating(false);
+    setLibrary(false);
+    setPanel(null);
+    setFocus(false);
+    setMainSettingsOpen(false);
+    void storage
+      .setPref("workspace-mode", mode)
+      .catch(() =>
+        setError("Could not save the workspace preference in this browser."),
+      );
+    void store.flush();
+  }
   useEffect(() => {
     setLastPrompt("");
     setRewrite(null);
@@ -815,7 +911,7 @@ export default function App() {
   }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (creating) return;
+      if (creating || workspaceMode === "vgame" || mainSettingsOpen) return;
       if (e.key === "Escape") {
         if (busy) stop();
         else {
@@ -860,6 +956,7 @@ export default function App() {
   return (
     <div
       className={`app ${focus && !creating ? "focus-mode" : ""} ${panel && !creating ? "has-panel" : ""}`}
+      data-workspace={workspaceMode}
     >
       <input
         type="file"
@@ -874,7 +971,7 @@ export default function App() {
       <header className="topbar">
         <nav className="main-nav" aria-label="Main navigation">
           <button
-            disabled={createBusy}
+            disabled={createBusy || gameBusy}
             onClick={() => {
               setCreating(false);
               setLibrary(false);
@@ -884,7 +981,7 @@ export default function App() {
             AI
           </button>
           <button
-            disabled={busy || createBusy}
+            disabled={busy || createBusy || gameBusy}
             onClick={() => {
               setCreating(false);
               setLibrary(!library);
@@ -893,7 +990,7 @@ export default function App() {
             My stories
           </button>
           <button
-            disabled={busy || createBusy}
+            disabled={busy || createBusy || gameBusy}
             onClick={() => {
               setCreating(false);
               store.add();
@@ -903,7 +1000,7 @@ export default function App() {
             New
           </button>
           <button
-            disabled={busy || createBusy}
+            disabled={busy || createBusy || gameBusy}
             className={creating ? "active" : ""}
             onClick={() => {
               setCreating(true);
@@ -914,7 +1011,7 @@ export default function App() {
             Create
           </button>
           <button
-            disabled={createBusy}
+            disabled={createBusy || gameBusy}
             onClick={() => {
               setCreating(false);
               setLibrary(false);
@@ -929,11 +1026,19 @@ export default function App() {
             className="document-name"
             aria-label="Story title"
             value={story.title}
-            disabled={busy}
+            disabled={busy || gameBusy}
             onChange={(e) => patch({ title: e.target.value })}
           />
         )}
         <div className="top-actions">
+          <button
+            aria-label="Main settings"
+            title="Main settings"
+            onClick={() => setMainSettingsOpen(true)}
+          >
+            <Settings size={16} />
+            <span>Main settings</span>
+          </button>
           <span className="saved">
             {store.saveError
               ? "Save failed"
@@ -943,7 +1048,7 @@ export default function App() {
           </span>
           <button
             className="connection-pill"
-            disabled={createBusy}
+            disabled={createBusy || gameBusy}
             onClick={() => {
               setCreating(false);
               setLibrary(false);
@@ -1083,6 +1188,34 @@ export default function App() {
               ))}
           </div>
         </main>
+      ) : workspaceMode === "vgame" ? (
+        story.vgame ? (
+          <Suspense fallback={<div className="loading">Loading Vgame…</div>}>
+            <GameWorkspace
+              key={story.id}
+              story={story}
+              patch={patch}
+              keys={keys}
+              onBusy={setGameBusy}
+              openPanel={panel === "history" ? "history" : undefined}
+              onPanelOpened={() => setPanel(null)}
+              onOpenConnection={() => setPanel("connection")}
+              onBranch={(game) => {
+                store.add({
+                  ...story,
+                  parent: story.id,
+                  title: branchTitle(story, store.stories),
+                  vgame: { ...game, actionLock: undefined },
+                });
+                setNotice(
+                  "Game branch created. The source project is preserved.",
+                );
+              }}
+            />
+          </Suspense>
+        ) : (
+          <div className="loading">Loading Vgame…</div>
+        )
       ) : (
         <>
           <div className="workspace">
@@ -1673,6 +1806,67 @@ export default function App() {
             </button>
           )}
         </>
+      )}
+      {workspaceMode === "vgame" &&
+        !creating &&
+        !library &&
+        panel === "connection" && (
+          <div
+            className="main-settings-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setPanel(null);
+            }}
+          >
+            <section
+              ref={gameConnectionDialog}
+              className="main-settings-dialog game-connection-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Vgame connection"
+            >
+              <div className="main-settings-heading">
+                <span>Vgame API & model</span>
+                <button
+                  aria-label="Close Vgame connection"
+                  onClick={() => setPanel(null)}
+                >
+                  ×
+                </button>
+              </div>
+              <fieldset disabled={gameBusy} className="panel-fieldset">
+                <ConnectionPanel
+                  story={story}
+                  patch={patch}
+                  apiKey={apiKey}
+                  setKey={(value) =>
+                    setCredential(credentialId(story.connection), value)
+                  }
+                  onStatus={setStatus}
+                />
+              </fieldset>
+              <p className="help">
+                Provider and API credentials are shared with Vchat. Vgame has
+                its own output and context controls.
+              </p>
+            </section>
+          </div>
+        )}
+      {mainSettingsOpen && (
+        <MainSettings
+          mode={workspaceMode}
+          dark={dark}
+          disabled={busy || createBusy || gameBusy}
+          onMode={switchWorkspace}
+          onAppearance={(value) => {
+            setDark(value);
+            void storage.setPref("appearance-compact", {
+              dark: value,
+              font,
+              width,
+            });
+          }}
+          onClose={() => setMainSettingsOpen(false)}
+        />
       )}
       {panel === "connection" && !library && (
         <div className="connection-status" role="status">

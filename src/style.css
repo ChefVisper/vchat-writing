@@ -28,6 +28,69 @@
   --hover: #405c7f;
   --bar: #304869;
 }
+:root[data-workspace="vgame"] {
+  --bg: #e5e5e5;
+  --panel: #d9d9d9;
+  --card: #f4f4f4;
+  --text: #222;
+  --muted: #606060;
+  --border: #b4b4b4;
+  --accent: #666;
+  --accent-bg: #d0d0d0;
+  --hover: #c3c3c3;
+  --bar: #cecece;
+  --ai-passage: #4c647b;
+}
+:root[data-workspace="vgame"][data-theme="dark"] {
+  --bg: #202020;
+  --panel: #2b2b2b;
+  --card: #181818;
+  --text: #e4e4e4;
+  --muted: #b0b0b0;
+  --border: #4a4a4a;
+  --accent: #6a6a6a;
+  --accent-bg: #444;
+  --hover: #555;
+  --bar: #333;
+  --ai-passage: #b9c5d2;
+}
+.main-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0009;
+  padding: 12px;
+}
+.main-settings-dialog {
+  width: min(420px, 100%);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  padding: 14px;
+}
+.main-settings-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.main-settings-heading h2 {
+  margin: 0;
+}
+.game-connection-dialog {
+  width: min(560px, 100%);
+}
+@media (max-width: 550px) {
+  .top-actions button[aria-label="Main settings"] span {
+    display: none;
+  }
+}
 * {
   box-sizing: border-box;
 }

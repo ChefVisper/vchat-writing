@@ -31,6 +31,9 @@ export const storage = {
               ...defaults,
               ...story.settings,
             },
+            ...(story.vgame
+              ? { vgame: { ...story.vgame, actionLock: undefined } }
+              : {}),
           }),
         );
       }),
