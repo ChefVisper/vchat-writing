@@ -50,6 +50,7 @@ const kinds = [
   "time",
   "weather",
 ];
+export const VHTML_KINDS = kinds;
 const controls = [
   "add",
   "define",
@@ -182,6 +183,8 @@ const schema: Record<string, string[]> = {
     "reserve-tokens",
     "summary",
     "global-drawer-open",
+    "choice-new-page",
+    "generation-new-page",
     "output-tokens",
     "thinking",
     "thinking-level",
@@ -203,6 +206,7 @@ const schema: Record<string, string[]> = {
 };
 schema.define = schema.add;
 schema.configure = schema.add;
+export const VHTML_FIELDS = schema;
 const repeated = new Set([
   "result",
   "condition",
@@ -492,6 +496,7 @@ export function optionEnabled(p: GameProject, option: GameOption) {
   try {
     return (
       !p.actionLock &&
+      !option.resolved &&
       (!option.once || !option.used) &&
       option.conditions.every((c) => condition(p, c)) &&
       !option.disabledIf.some((c) => condition(p, c))
@@ -667,6 +672,7 @@ function run(p: GameProject, commands: VCommand[], ctx: Context) {
             reference === true ? "" : str(reference),
           );
           let o: GameObject;
+          let created = false;
           if (command.name === "add") {
             if (!name) throw new Error("An added object needs a name.");
             const id = idValue(val(command, "id"), uid());
@@ -696,6 +702,7 @@ function run(p: GameProject, commands: VCommand[], ctx: Context) {
               owner: owner(ctx),
             };
             if (!prior) {
+              created = true;
               p.objects.push(o);
               ctx.created.add(id);
               if (["event", "encounter"].includes(kind))
@@ -784,7 +791,7 @@ function run(p: GameProject, commands: VCommand[], ctx: Context) {
             o.default = checkedGameValue(o, val(command, "default"));
           else if (has(command, "type") && command.name !== "configure")
             o.default = checkedGameValue(o, natural);
-          if (command.name === "define")
+          if (command.name === "define" || created)
             o.value = checkedGameValue(
               o,
               has(command, "value") ? val(command, "value") : o.default,
@@ -1079,6 +1086,7 @@ function run(p: GameProject, commands: VCommand[], ctx: Context) {
               group: str(val(command, "group")),
               once: bool(val(command, "once")),
               used: existing?.used ?? false,
+              resolved: existing?.resolved ?? false,
               result,
               conditions,
               disabledIf,
@@ -1277,6 +1285,12 @@ function run(p: GameProject, commands: VCommand[], ctx: Context) {
             );
           if (has(command, "thinking"))
             settings.thinking = bool(val(command, "thinking"));
+          if (has(command, "choice-new-page"))
+            settings.choiceNewPage = bool(val(command, "choice-new-page"));
+          if (has(command, "generation-new-page"))
+            settings.generationNewPage = bool(
+              val(command, "generation-new-page"),
+            );
           if (has(command, "thinking-level"))
             settings.thinkingLevel = safeEnum(
               val(command, "thinking-level"),
@@ -1497,12 +1511,31 @@ export function executeOption(p: GameProject, id: string): GameExecution {
     throw new Error("This option is unavailable or already in progress.");
   const next = structuredClone(p);
   next.options.find((o) => o.id === id)!.used = true;
+  for (const sibling of next.options)
+    if (sibling.pageId === option.pageId && sibling.group === option.group)
+      sibling.resolved = true;
   const result = transaction(next, option.result, {
     origin: option.owner === "ai" ? "ai" : "option",
     label: `Choice: ${option.name}`,
     confirmed: false,
     recordHistory: false,
   });
+  if (
+    result.generation &&
+    p.settings.choiceNewPage !== false &&
+    result.project.activePageId === option.pageId
+  ) {
+    const transition = transaction(result.project, parseVHTML("<page: next>"), {
+      origin: "option",
+      recordHistory: false,
+      label: "Continue selected choice",
+    });
+    const oldIds = new Set(p.options.map((o) => o.id));
+    for (const created of transition.project.options)
+      if (!oldIds.has(created.id) && created.pageId === option.pageId)
+        created.pageId = transition.project.activePageId;
+    result.project = transition.project;
+  }
   // Include the consumed option in the same undo checkpoint as its results.
   result.project.history = p.history;
   result.project.future = p.future;
@@ -1665,6 +1698,61 @@ export function replaceGamePageText(
   if (!validateGameProject(next))
     throw new Error("Page edit exceeds project limits.");
   commitGame(p, next, { origin: "user", label: "Edit page prose" });
+  return next;
+}
+
+/** Direct typing shares one compact revision until the author pauses. */
+export function editGamePageText(
+  p: GameProject,
+  pageId: string,
+  text: string,
+  at = Date.now(),
+): GameProject {
+  const index = p.pages.findIndex((page) => page.id === pageId);
+  if (index < 0 || typeof text !== "string" || text.length > 2000000)
+    throw new Error("Page prose is limited to 2,000,000 characters.");
+  if (p.pages[index].text === text) return p;
+  const last = p.history.at(-1),
+    change = last?.changes[0];
+  const grouped =
+    !!last &&
+    !p.future.length &&
+    last.origin === "user" &&
+    last.label === "Edit manuscript" &&
+    at - last.at >= 0 &&
+    at - last.at < 1200 &&
+    last.changes.length === 1 &&
+    change?.path.join(".") === `pages.${index}.text`;
+  let before = p;
+  if (grouped && change) {
+    const now = p.pages[index].text;
+    const original = change.text
+      ? now.slice(0, change.text.keep) +
+        change.text.before +
+        (change.text.tail ? now.slice(-change.text.tail) : "")
+      : String(change.before ?? "");
+    before = {
+      ...p,
+      pages: p.pages.map((page, i) =>
+        i === index ? { ...page, text: original } : page,
+      ),
+      history: p.history.slice(0, -1),
+      log:
+        p.log.at(-1)?.message === "Edit manuscript"
+          ? p.log.slice(0, -1)
+          : p.log,
+    };
+  }
+  const next = {
+    ...p,
+    pages: p.pages.map((page, i) => (i === index ? { ...page, text } : page)),
+  };
+  commitGame(before, next, { origin: "user", label: "Edit manuscript" });
+  const revision = next.history.at(-1);
+  if (revision?.label === "Edit manuscript") {
+    revision.at = at;
+    if (grouped && last) revision.id = last.id;
+  }
   return next;
 }
 
@@ -1833,7 +1921,7 @@ export function generateVHTML(
   const quote = (v: unknown) => JSON.stringify(v),
     source: string[] = [];
   source.push(
-    `<config: approval: ${p.settings.approval} profile: ${p.settings.profile} max-context-tokens: ${p.settings.maxContextTokens} max-history-pages: ${p.settings.maxHistoryPages} reserve-tokens: ${p.settings.reserveTokens} summary: ${p.settings.summary} output-tokens: ${p.settings.maxOutputTokens} thinking: ${p.settings.thinking} thinking-level: ${p.settings.thinkingLevel} thinking-output-tokens: ${p.settings.thinkingMaxTokens}>`,
+    `<config: approval: ${p.settings.approval} profile: ${p.settings.profile} max-context-tokens: ${p.settings.maxContextTokens} max-history-pages: ${p.settings.maxHistoryPages} reserve-tokens: ${p.settings.reserveTokens} summary: ${p.settings.summary} output-tokens: ${p.settings.maxOutputTokens} thinking: ${p.settings.thinking} thinking-level: ${p.settings.thinkingLevel} thinking-output-tokens: ${p.settings.thinkingMaxTokens} choice-new-page: ${p.settings.choiceNewPage !== false} generation-new-page: ${p.settings.generationNewPage !== false}>`,
   );
   for (const o of p.objects) {
     source.push(`<add: ${o.kind}: name: ${quote(o.name)} id: ${quote(o.id)}>`);

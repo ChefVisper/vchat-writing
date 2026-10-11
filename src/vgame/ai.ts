@@ -248,14 +248,14 @@ export function buildGamePrompt(
           visible,
         })),
       options: project.options
-        .filter((o) => o.pageId === page.id && !o.used)
+        .filter((o) => o.pageId === page.id && !o.used && !o.resolved)
         .map(({ id, name }) => ({ id, name })),
       appliedProposals: approved,
     }),
   );
   add(
     "Output protocol",
-    `Return a single complete JSON object {"narrative":"only new prose to append","proposals":[{"id":"unique optional ID","reason":"short purpose","vhtml":"valid V-HTML","dependencies":[]}]}. Prose-only with proposals:[] is fully valid. Never assume pending proposals have taken effect, never describe their effects as already executed. Preserve language, viewpoint and agency; complete an unfinished input and finish your own final sentence. Use real paragraph breaks. No recap or repetition. Keep JSON concise enough to close within ${settings.maxTokens} visible tokens. No technical commands or meta-instructions in narrative.`,
+    `Return a single complete JSON object {"narrative":"only new prose to append","proposals":[{"id":"unique optional ID","reason":"short purpose","vhtml":"valid V-HTML","dependencies":[]}]}. Prose-only with proposals:[] is fully valid. Never assume pending proposals have taken effect, never describe their effects as already executed. Preserve language, viewpoint and agency; complete an unfinished input and finish your own final sentence. Use real paragraph breaks. No recap or repetition. Treat a resolved choice as a committed decision: continue its consequence, never offer the discarded alternatives again. Prefer a new page at meaningful decisions, scene/location/time changes and completed narrative beats, rather than indefinitely extending one page. Choice actions normally already open a new page; fill that page without proposing a second empty transition. For newly proposed decision options prefer result: <page: next> <ai: mode: react> unless a brief same-scene exchange calls for append. Never change pages for every dialogue line. Keep JSON concise enough to close within ${settings.maxTokens} visible tokens. No technical commands or meta-instructions in narrative.`,
   );
   add(
     "Latest author action",

@@ -26,6 +26,9 @@ import { download } from "../storage/transfer";
 import { Field } from "./Fields";
 import { ManuscriptEditor, type ManuscriptHandle } from "./ManuscriptEditor";
 import { ThinkingPanel } from "./ThinkingPanel";
+import { VHTMLComposer, VHTMLSuggestions } from "./VHTMLComposer";
+import { vhtmlCompletions, type VHTMLCompletion } from "../vgame/completion";
+import guide from "../../docs/vhtml-guide-tr.txt?raw";
 import type {
   GameChange,
   GameGeneration,
@@ -33,7 +36,7 @@ import type {
   GameWidget,
 } from "../vgame/types";
 import { useStore } from "../store";
-import { gameDiff } from "../vgame/state";
+import { gameDiff, commitGame } from "../vgame/state";
 import {
   parseVHTML,
   printVHTML,
@@ -57,6 +60,7 @@ import {
   editGameProposal,
   validateGameProject,
   replaceGamePageText,
+  editGamePageText,
   appendGameText,
   executeGameHook,
 } from "../vgame/runtime";
@@ -393,11 +397,13 @@ function VHTMLInput({
   onChange,
   disabled,
   diagnostic,
+  game,
 }: {
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
   diagnostic?: VDiagnostic;
+  game: GameProject;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -406,18 +412,20 @@ function VHTMLInput({
   const syncing = useRef(false);
   const readOnly = useRef(new Compartment());
   const errorMarker = useRef(new Compartment());
-  const [completing, setCompleting] = useState(false);
-  const completions = {
-    set: '<set: stat: "id" value: 0>',
-    modify: '<modify: stat: "id" increase: 1>',
-    page: "<page: next>",
-    text: '<text: append: "">',
-    option:
-      '<option: id: "choice" name: "Choice" once: true result: <page: append>>',
-    display: '<display: id: "view" target: "id" style: counter ui: global>',
-    instruction: '<ai-instruct: id: "direction" scope: global content: "">',
-    ai: '<ai: instruction: "Continue the scene.">',
-    panel: '<panel: id: "panel" name: "Panel" ui: global drawer: right>',
+  const [completions, setCompletions] = useState<VHTMLCompletion[]>([]);
+  const [selected, setSelected] = useState(0);
+  const suggestions = useRef({ completions, selected });
+  suggestions.current = { completions, selected };
+  const gameRef = useRef(game);
+  gameRef.current = game;
+  const accept = (item: VHTMLCompletion) => {
+    const editor = view.current;
+    if (!editor || editor.state.readOnly) return;
+    editor.dispatch({
+      changes: { from: item.from, to: item.to, insert: item.insert },
+      selection: { anchor: item.from + item.insert.length },
+    });
+    editor.focus();
   };
   useEffect(() => {
     if (!host.current) return;
@@ -456,18 +464,47 @@ function VHTMLInput({
           keymap.of([
             {
               key: "Mod-Space",
-              run: () => {
-                setCompleting(true);
-                return true;
+              run: (editor) => {
+                setCompletions(
+                  vhtmlCompletions(
+                    editor.state.doc.toString(),
+                    editor.state.selection.main.head,
+                    gameRef.current,
+                  ),
+                );
+                return suggestions.current.completions.length > 0;
               },
             },
             {
               key: "Escape",
               run: () => {
-                setCompleting(false);
-                return false;
+                setCompletions([]);
+                return true;
               },
             },
+            {
+              key: "Tab",
+              run: () => {
+                const item =
+                  suggestions.current.completions[suggestions.current.selected];
+                if (!item) return false;
+                accept(item);
+                return true;
+              },
+            },
+            ...(["ArrowDown", "ArrowUp"] as const).map((key) => ({
+              key,
+              run: () => {
+                const menu = suggestions.current;
+                if (!menu.completions.length) return false;
+                setSelected(
+                  (menu.selected +
+                    (key === "ArrowDown" ? 1 : menu.completions.length - 1)) %
+                    menu.completions.length,
+                );
+                return true;
+              },
+            })),
             ...standardKeymap,
           ]),
           readOnly.current.of(EditorState.readOnly.of(disabled)),
@@ -480,6 +517,19 @@ function VHTMLInput({
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !syncing.current)
               current.current.onChange(update.state.doc.toString());
+            if (
+              (update.docChanged || update.selectionSet) &&
+              !syncing.current
+            ) {
+              setCompletions(
+                vhtmlCompletions(
+                  update.state.doc.toString(),
+                  update.state.selection.main.head,
+                  gameRef.current,
+                ),
+              );
+              setSelected(0);
+            }
           }),
         ],
       }),
@@ -498,6 +548,7 @@ function VHTMLInput({
       changes: { from: 0, to: editor.state.doc.length, insert: value },
     });
     syncing.current = false;
+    setCompletions([]);
   }, [value]);
   useEffect(() => {
     view.current?.dispatch({
@@ -530,36 +581,15 @@ function VHTMLInput({
   return (
     <>
       <div className="vgame-syntax" ref={host} />
-      {completing && !disabled && (
-        <div
-          className="vgame-completions"
-          role="listbox"
-          aria-label="V-HTML command completions"
-        >
-          {Object.entries(completions).map(([name, snippet]) => (
-            <button
-              key={name}
-              role="option"
-              aria-selected="false"
-              onClick={() => {
-                const editor = view.current;
-                if (editor) {
-                  editor.dispatch(editor.state.replaceSelection(snippet));
-                  editor.focus();
-                }
-                setCompleting(false);
-              }}
-            >
-              {name}
-            </button>
-          ))}
-          <button onClick={() => setCompleting(false)}>
-            Close completions
-          </button>
-        </div>
-      )}
+      <VHTMLSuggestions
+        items={disabled ? [] : completions}
+        selected={selected}
+        onChoose={accept}
+        name="V-HTML command completions"
+      />
       <p className="help">
-        Ctrl+Space offers commands. Parser errors show their line and column.
+        Type &lt; for suggestions, then Tab or tap to insert. Parser errors show
+        their line and column.
       </p>
     </>
   );
@@ -1614,6 +1644,8 @@ export function GameWorkspace({
   latest.current = { story, game };
   const [tab, setTab] = useState<Tab>("Story");
   const [input, setInput] = useState("");
+  const [commandInput, setCommandInput] = useState("");
+  const [editReset, setEditReset] = useState(0);
   const [source, setSource] = useState("");
   const [sourceDiagnostic, setSourceDiagnostic] = useState<VDiagnostic>();
   const [definitionMode, setDefinitionMode] = useState(false);
@@ -1658,10 +1690,17 @@ export function GameWorkspace({
   const file = useRef<HTMLInputElement>(null);
   const sourceFile = useRef<HTMLInputElement>(null);
   const page = game.pages.find((item) => item.id === game.activePageId)!;
-  const wordCount = useMemo(
-    () => (page.text.trim() ? page.text.trim().split(/\s+/).length : 0),
-    [page.text],
-  );
+  const [wordCount, setWordCount] = useState(0);
+  useEffect(() => {
+    const timer = setTimeout(
+      () =>
+        setWordCount(
+          page.text.trim() ? page.text.trim().split(/\s+/).length : 0,
+        ),
+      250,
+    );
+    return () => clearTimeout(timer);
+  }, [page.text]);
   const visible = visibleGameWidgets(game);
   const providerSignature = `${story.connection.kind}:${story.connection.url}:${story.connection.model}:${keys[credentialId(story.connection)] ?? ""}`;
   const drawer =
@@ -1794,8 +1833,16 @@ export function GameWorkspace({
     nativeAbort.current = Promise.resolve();
     let reasoning = "";
     try {
+      const nextPage =
+        !action?.id &&
+        project.settings.generationNewPage !== false &&
+        !!project.pages.find((p) => p.id === project.activePageId)?.text.trim();
+      const generationProject = nextPage
+        ? executeVHTML(project, "<page: next>", { recordHistory: false })
+            .project
+        : project;
       const result = await generateGame(
-        project,
+        generationProject,
         startStory,
         keys,
         action,
@@ -1817,6 +1864,29 @@ export function GameWorkspace({
         throw new Error(
           "The game changed while the model was working. The response was not applied.",
         );
+      if (nextPage) {
+        result.project = {
+          ...result.project,
+          history: basis.history,
+          future: basis.future,
+          log: basis.log,
+        };
+        commitGame(basis, result.project, {
+          origin: "ai",
+          label: "AI passage on new page",
+        });
+        const revision = result.project.history.at(-1);
+        if (revision)
+          revision.proposalIds = result.project.proposals
+            .filter(
+              (q) =>
+                q.status === "approved" &&
+                !basis.proposals.some(
+                  (old) => old.id === q.id && old.status === "approved",
+                ),
+            )
+            .map((q) => q.id);
+      }
       save(finishGameAction(result.project));
       setInput("");
       setNotice(
@@ -1909,6 +1979,25 @@ export function GameWorkspace({
       `<config: ${key}: ${typeof value === "string" ? quote(value) : String(value)}>`,
       "Update game settings",
     );
+  const sendInput = (value: string, clear: (value: string) => void) => {
+    if (busyRef.current || !value.trim()) return;
+    if (value.trimStart().startsWith("<")) {
+      if (execute(value, "Send V-HTML")) clear("");
+      return;
+    }
+    try {
+      commit(
+        appendGameText(latest.current.game, value, {
+          origin: "user",
+          label: "Send author text",
+        }).project,
+      );
+      clear("");
+      requestAnimationFrame(() => editor.current?.scrollToEnd());
+    } catch (caught) {
+      fail(caught);
+    }
+  };
   const closeTools = () => {
     setTab("Story");
     if (drawer) {
@@ -2195,12 +2284,26 @@ export function GameWorkspace({
           </div>
           <div className="vgame-prose">
             <ManuscriptEditor
+              key={`${page.id}:${editReset}`}
               ref={editor}
               text={page.text}
-              readOnly
+              readOnly={busy}
               font={15}
               latest={null}
-              onChange={() => {}}
+              onChange={(text) => {
+                try {
+                  save(
+                    editGamePageText(
+                      latest.current.game,
+                      latest.current.game.activePageId,
+                      text,
+                    ),
+                  );
+                } catch (caught) {
+                  fail(caught);
+                  setEditReset((value) => value + 1);
+                }
+              }}
               undo={() => {
                 travelHistory("undo");
               }}
@@ -2221,7 +2324,12 @@ export function GameWorkspace({
           </div>
           <div className="vgame-choices" aria-label="Page choices">
             {game.options
-              .filter((option) => option.pageId === game.activePageId)
+              .filter(
+                (option) =>
+                  option.pageId === game.activePageId &&
+                  !option.resolved &&
+                  !(option.once && option.used),
+              )
               .sort((a, b) => a.order - b.order)
               .map((option) => (
                 <button
@@ -2246,32 +2354,21 @@ export function GameWorkspace({
               ))}
           </div>
           <div className="vgame-compose">
-            <textarea
-              aria-label="Freeform game input"
-              maxLength={10000}
-              placeholder="Write prose or tell the AI what should happen next…"
+            <VHTMLComposer
+              game={game}
+              label="Freeform game input"
+              placeholder="Send text, or start with < for V-HTML…"
               disabled={busy}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={setInput}
+              onSubmit={() => sendInput(input, setInput)}
             />
             <div className="vgame-compose-actions">
               <button
                 disabled={busy || !input.trim()}
-                onClick={() => {
-                  try {
-                    const result = appendGameText(game, input, {
-                      origin: "user",
-                      label: "Append author text",
-                    });
-                    commit(result.project);
-                    setInput("");
-                    requestAnimationFrame(() => editor.current?.scrollToEnd());
-                  } catch (caught) {
-                    fail(caught);
-                  }
-                }}
+                onClick={() => sendInput(input, setInput)}
               >
-                Append text
+                Send
               </button>
               <button
                 disabled={busy}
@@ -2446,7 +2543,15 @@ export function GameWorkspace({
                   </>
                 )}
                 {tab === "UI" && (
-                  <UIEditor game={game} execute={execute} busy={busy} />
+                  <>
+                    <p className="help">
+                      UI is the layout. A panel groups views; a widget is one
+                      counter, bar or text bound to World data. Example: Money
+                      is a stat, its counter is a widget, and Character is the
+                      panel containing it. Removing a widget keeps the stat.
+                    </p>
+                    <UIEditor game={game} execute={execute} busy={busy} />
+                  </>
                 )}
                 {tab === "Instructions" && (
                   <InstructionEditor
@@ -2654,6 +2759,7 @@ export function GameWorkspace({
                       </button>
                     </div>
                     <VHTMLInput
+                      game={game}
                       value={source}
                       disabled={busy}
                       diagnostic={sourceDiagnostic}
@@ -2757,6 +2863,44 @@ export function GameWorkspace({
                       page when compact. Unknown or unsupported commands fail
                       with a location; no partial state is applied.
                     </p>
+                    <Field label="V-HTML command input">
+                      <VHTMLComposer
+                        game={game}
+                        disabled={busy}
+                        label="V-HTML command input"
+                        value={commandInput}
+                        onChange={setCommandInput}
+                        placeholder='<add: stat: id: "money" name: "Money">'
+                        maxLength={VHTML_LIMITS.sourceLength}
+                        onSubmit={() => {
+                          if (
+                            commandInput.trim() &&
+                            execute(commandInput, "Send V-HTML")
+                          )
+                            setCommandInput("");
+                        }}
+                      />
+                    </Field>
+                    <button
+                      disabled={busy || !commandInput.trim()}
+                      onClick={() => {
+                        if (execute(commandInput, "Send V-HTML"))
+                          setCommandInput("");
+                      }}
+                    >
+                      Send V-HTML
+                    </button>
+                    <details className="vgame-guide">
+                      <summary>V-HTML guide &amp; examples</summary>
+                      <button
+                        onClick={() =>
+                          download("vhtml-guide-tr.txt", guide, "text/plain")
+                        }
+                      >
+                        Download guide
+                      </button>
+                      <pre>{guide}</pre>
+                    </details>
                   </>
                 )}
                 {tab === "Inbox" && (
@@ -2830,6 +2974,22 @@ export function GameWorkspace({
                 )}
                 {tab === "Context" && (
                   <>
+                    <Toggle
+                      label="New page after choices"
+                      value={game.settings.choiceNewPage !== false}
+                      disabled={busy}
+                      onChange={(value) =>
+                        updateSetting("choice-new-page", value)
+                      }
+                    />
+                    <Toggle
+                      label="New page for Generate"
+                      value={game.settings.generationNewPage !== false}
+                      disabled={busy}
+                      onChange={(value) =>
+                        updateSetting("generation-new-page", value)
+                      }
+                    />
                     <Field label="Game AI profile">
                       <select
                         disabled={busy}

@@ -128,6 +128,39 @@
   padding: 5px;
   border: 1px solid var(--border);
   background: var(--card);
+  max-height: 156px;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.vgame-completions button {
+  min-height: 32px;
+}
+.vgame-completions [aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+.vgame-input-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+.vgame-input-editor textarea {
+  width: 100%;
+}
+.vgame-guide {
+  margin-top: 12px;
+}
+.vgame-guide summary {
+  cursor: pointer;
+  color: var(--accent);
+  padding: 7px 0;
+}
+.vgame-guide pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.6 system-ui;
 }
 .vgame-workspace .vgame-choice:hover {
   text-decoration: underline;

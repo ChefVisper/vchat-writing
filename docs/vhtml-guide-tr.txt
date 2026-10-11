@@ -1,0 +1,119 @@
+# V-HTML kısa rehber
+
+V-HTML bir oyun komut dilidir. HTML veya JavaScript değildir. Komutlar
+oyunun verisini değiştirir; metnin içindeki komutlar kendiliğinden çalışmaz.
+
+## Nereden yazılır?
+
+- Ana ekrandaki Send: normal metni hikâyeye ekler. İlk karakteri < olan
+  bir giriş, V-HTML komutları olarak çalıştırılır. Metin ve komutları ayrı gönder.
+- V-HTML sekmesinin altındaki komut alanı: komutu yazıp Send V-HTML'e bas.
+- Büyük kaynak editörü: Preview V-HTML ile incele, Apply V-HTML ile uygula.
+- < yazınca tamamlamalar açılır. Tab veya dokunma öneriyi yerleştirir.
+  Ok tuşları seçim değiştirir, Escape listeyi kapatır. Enter alt satıra geçer;
+  komut girişlerinde Ctrl+Enter gönderir.
+
+## Veri oluşturma ve değiştirme
+
+Önce bir stat oluştur:
+
+<add: stat: id: "money" name: "Para" type: integer default: 50 min: 0 max: 100000>
+
+Sonra değerini değiştir:
+
+<set: stat: "money" value: 80>
+<modify: stat: "money" increase: 10>
+<modify: stat: "money" decrease: 5>
+
+id sabit referanstır. name ekranda görünen isimdir. Boşluk içeren metinleri
+tırnak içine al. Kaydırıcı değerleri ve komutlar aynı veriyi değiştirir.
+
+## UI, panel ve widget farkı
+
+World gerçek veriyi tutar: Para = 50 gibi.
+UI, bu verilerin nerede ve nasıl gösterileceğinin tamamıdır.
+Panel bir kapsayıcıdır; widget ise sayaç, bar veya yazı gibi tek bir göstergedir.
+Bir stat oluşturmak onu ekranda otomatik göstermez. Widget oluşturmak da
+statın değerini değiştirmez. Widgetı kaldırınca stat silinmez.
+
+Örnek: sağdaki global panelde para sayacı:
+
+<panel: id: "character" name: "Karakter" ui: global drawer: right>
+<display: id: "money-view" target: "money" label: "Para" style: counter ui: global panel: "character">
+<config: global-drawer-open: true>
+
+Bir sayfaya özel bar:
+
+<add: mechanic: id: "tension" name: "Gerilim" type: percentage default: 20>
+<display: id: "tension-view" target: "tension" style: progress-bar ui: page position: page-top remove-on: page-exit>
+
+Global göstergeler sayfa değişince kalır. page göstergesi kendi sayfasında
+görünür. event göstergesi bağlı olay aktifken görünür.
+
+## Sayfa ve AI
+
+<page: next>
+
+Boş yeni sayfa açar, AI çağırmaz.
+
+<text: append: "\n\nKapı aralandı.">
+
+Geçerli sayfaya metin ekler, AI çağırmaz.
+
+<ai: instruction: "Kapının ardındaki sahneyi devam ettir.">
+
+AI'ı açıkça çağırır. İkisini birlikte kullanabilirsin:
+
+<page: next>
+<ai: mode: react instruction: "Yeni yerde karşılaştığımız kişiyi anlat.">
+
+Generate normalde dolu bir sayfadan yeni sayfaya geçer. Hata veya Stop,
+bu geçici sayfayı kaydetmez. Context → New page for Generate kapatılırsa
+Generate geçerli sayfaya ekler. Açıkça yazılmış <page: append> <ai>
+komutları kendi sayfa tercihini korur.
+
+## Bir karar, üç seçenek
+
+<option: id: "ask" name: "Yol sor" group: "crossroads" once: true result: <page: next> <ai: mode: react instruction: "Yol sorduğumuz kişi cevap versin.">>
+<option: id: "wait" name: "Bekle" group: "crossroads" once: true result: <page: next> <ai: mode: react instruction: "Beklediğimizde neler olduğunu anlat.">>
+<option: id: "leave" name: "Uzaklaş" group: "crossroads" once: true result: <page: next> <ai: mode: react instruction: "Oradan ayrılmamızın sonucunu anlat.">>
+
+Birini seçince aynı sayfadaki aynı group'a ait bütün alternatifler kapanır.
+group boşsa o sayfadaki grubu olmayan seçenekler aynı karar sayılır.
+Başka group'a ait bağımsız seçenekler etkilenmez. Undo seçimi ve sonuçlarını
+birlikte geri alır. AI devamı ayrı bir undo adımıdır.
+
+Context → New page after choices açıkken AI isteyen seçimler yeni sayfaya
+geçer. Kısa konuşmayı aynı sayfada sürdürmek için bu ayarı kapatıp sonuçta
+<page: append> <ai> kullan. AI istemeyen seçenekler otomatik sayfa açmaz.
+
+## AI talimatları ve yetki
+
+<ai-instruct: id: "style" scope: global content: "Kısa, canlı sahneler yaz. Önemli kararlarda seçenekler öner.">
+
+Instructions menüsünden bunu düzenleyebilir veya devre dışı bırakabilirsin.
+AI'ın oyun komutları varsayılan olarak Inbox'ta öneri olarak bekler.
+Manual: sen onaylarsın. Smart: izinli rutin değer değişiklikleri uygulanır.
+Auto: izinli ve doğrulanmış değişiklikler uygulanır. Korunan veri, güvenlik
+ve silme onayları her modda geçerlidir.
+
+<configure: stat: "money" ai-access: modify>
+
+AI'a bu statı değiştirme izni verir. AI kendi kendine izin yükseltemez.
+
+## Kayıt ve hata
+
+Save / Load → Export checkpoint bütün oyun sayfalarını ve verisini kaydeder.
+My stories → Export, Vchat ile Vgame'i birlikte kaydeder.
+V-HTML kaynak exportu büyük/eski sayfa metinlerinin tam yedeği değildir.
+Silme ve metin değiştirme komutları onay isteyebilir. Hatalı bir komut
+girişin tamamını durdurur; yarım işlem uygulanmaz.
+
+<remove: ui: "money-view">
+
+Yalnızca para widgetını kaldırır.
+
+<remove: stat: "money">
+
+Para verisini siler; bağlı göstergeler de temizlenir. Bu işlem onay ister.
+Desteklenmeyen komutlar hata verir. Teknik dil referansı: docs/vhtml.md.

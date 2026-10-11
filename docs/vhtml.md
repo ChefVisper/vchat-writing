@@ -68,6 +68,8 @@ Definitions establish types, defaults, bounds and permissions. `description-ai` 
 
 Option result order is meaningful. Validate a complete transaction before applying effects, and lock a clicked option while its action is in progress. An invalid later effect must not leave an earlier money/stat change committed. `once` and action locking protect against accidental repeated clicks; unrestricted manual co-writing remains available regardless of options.
 
+Selecting a decision resolves every option with the same page and `group`, including the selected option. Ungrouped options share one decision. Resolved alternatives disappear and cannot be invoked; their definitions remain for audit and Undo. Independent groups are preserved. Resolution takes precedence over `once: false`; author a new option ID for a new decision. Legacy saves without the optional `resolved` flag remain valid. Choices requesting AI default to a fresh page when their effects have not already navigated. Use `<config: choice-new-page: false>` to keep same-page AI choices. Normal Generate also stages a fresh page until the response succeeds; `<config: generation-new-page: false>` keeps it on the current page. Explicit V-HTML `<ai>` actions retain their authored page sequence.
+
 ## Global, page and event UI
 
 ```vhtml
@@ -115,14 +117,14 @@ Instruction priority applies only inside the author's equal-trust instruction la
 
 The current runtime command families are:
 
-| Family | Executable commands |
-| --- | --- |
-| State | `add`, `define`, `configure`/`conf`, `set`, `modify`, `remove`, `reset`, `clone` |
-| Pages and prose | `page`, `text`, `scene`, `summary`, `memory` |
-| Interaction and presentation | `option`, `display`, `panel`, `show`, `hide`, `notification` |
-| Conditions and hooks | `if`, `else`, `require`, `trigger`, `on`, `every`, `chance`, `cooldown`, `random` |
-| AI and settings | `ai`, `ai-instruct`, `ai-permission`, `config` |
-| Section modifiers | `section` is nested data under a configured section mode; `increase`/`multiply` are chance modifiers within that section, not standalone actions |
+| Family                       | Executable commands                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| State                        | `add`, `define`, `configure`/`conf`, `set`, `modify`, `remove`, `reset`, `clone`                                                                 |
+| Pages and prose              | `page`, `text`, `scene`, `summary`, `memory`                                                                                                     |
+| Interaction and presentation | `option`, `display`, `panel`, `show`, `hide`, `notification`                                                                                     |
+| Conditions and hooks         | `if`, `else`, `require`, `trigger`, `on`, `every`, `chance`, `cooldown`, `random`                                                                |
+| AI and settings              | `ai`, `ai-instruct`, `ai-permission`, `config`                                                                                                   |
+| Section modifiers            | `section` is nested data under a configured section mode; `increase`/`multiply` are chance modifiers within that section, not standalone actions |
 
 The parser also accepts future names such as `ai-context`, `option-group`, `menu`, `button`, `input`, `chapter`, `bookmark` and `style`, but parsing does not make them executable. UI/style selection uses the existing fixed widgets rather than the future `style` command. Generic world concepts such as relationship, inventory, item, quest, location, time and weather are object kinds authored through `add`/`define`, not arbitrary new executable root commands. The runtime must validate each command's fields and reject unsupported combinations; the broader draft is not a promise that every example has full game semantics.
 

@@ -91,6 +91,7 @@ export interface GameOption {
   group: string;
   once: boolean;
   used: boolean;
+  resolved?: boolean;
   result: VCommand[];
   conditions: VCommand[];
   disabledIf: VCommand[];
@@ -133,6 +134,8 @@ export interface GameSettings {
   reserveTokens: number;
   summary: "manual" | "disabled";
   globalDrawerOpen: boolean;
+  choiceNewPage?: boolean;
+  generationNewPage?: boolean;
 }
 export interface GameChange {
   path: (string | number)[];

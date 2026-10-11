@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { editorState, expectEditor } from "./editor";
+import { editorState, expectEditor, setEditorText } from "./editor";
 
 const endpoint = "https://openrouter.ai/api/v1";
 const initialProse =
@@ -117,6 +117,23 @@ async function seed(page: Page, text = initialProse) {
   await mode(page, "vgame");
   await expect(page.locator(".vgame-workspace")).toBeVisible();
   await expectEditor(page, text);
+  await page.evaluate(async () => {
+    const path = "/src/store.ts";
+    const { useStore } = await import(path);
+    const store = useStore.getState(),
+      story = store.stories.find((s: any) => s.id === store.current);
+    store.patch({
+      vgame: {
+        ...story.vgame,
+        settings: {
+          ...story.vgame.settings,
+          choiceNewPage: false,
+          generationNewPage: false,
+        },
+      },
+    });
+    await useStore.getState().flush();
+  });
 }
 
 async function mode(page: Page, value: "vchat" | "vgame") {
@@ -196,7 +213,7 @@ test("Vgame keeps Vchat prose, stores pages and mode, and follows gray light/dar
   await page
     .getByRole("textbox", { name: "Freeform game input" })
     .fill("\n\nMira found a ticket.");
-  await page.getByRole("button", { name: "Append text", exact: true }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expectEditor(page, initialProse + "\n\nMira found a ticket.");
   await page.getByRole("button", { name: "New page", exact: true }).click();
   await expectEditor(page, "");
@@ -224,7 +241,7 @@ test("Vgame keeps Vchat prose, stores pages and mode, and follows gray light/dar
       .evaluate((element) =>
         getComputedStyle(element).getPropertyValue("--card").trim(),
       ),
-  ).toBe("#f4f4f4");
+  ).toBe("#f0f5f1");
   await page
     .getByRole("button", { name: "Main settings", exact: true })
     .click();
@@ -255,7 +272,7 @@ test("explicit choice calls AI once; plain author input and blank pages never ge
   await page
     .getByRole("textbox", { name: "Freeform game input" })
     .fill("\nMira looked down.");
-  await page.getByRole("button", { name: "Append text", exact: true }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   expect(api.sent).toHaveLength(0);
   await page
     .getByRole("button", { name: "Take a coin", exact: true })
@@ -265,7 +282,7 @@ test("explicit choice calls AI once; plain author input and blank pages never ge
   expect(api.sent[0].stream).toBe(false);
   await expect(
     page.getByRole("button", { name: "Take a coin", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   expect(
     (await currentStory(page)).vgame.objects.find(
       (object: any) => object.id === "coins",
@@ -285,7 +302,7 @@ test("explicit choice calls AI once; plain author input and blank pages never ge
   await page.getByRole("button", { name: "Redo game action" }).click();
   await expect(
     page.getByRole("button", { name: "Take a coin", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Redo game action" }).click();
   expect(api.sent).toHaveLength(1);
   await page.getByRole("button", { name: "New page", exact: true }).click();
@@ -436,7 +453,7 @@ test("V-HTML preview/import and visual editors share state; global UI survives p
     ).value,
   ).toEqual(["ticket", "key"]);
   await closeTools(page);
-  await source(page, "");
+  await source(page, "<");
   await page.getByRole("button", { name: "Load canonical source" }).click();
   await expect(
     page.getByRole("textbox", { name: "V-HTML source", exact: true }),
@@ -481,7 +498,10 @@ test("V-HTML preview/import and visual editors share state; global UI survives p
     page.getByRole("button", { name: "Apply V-HTML", exact: true }),
   ).toBeDisabled();
   await expect(page.getByRole("alert")).toContainText(/line 1/);
-  await source(page, "");
+  await source(page, "<");
+  await page
+    .getByRole("textbox", { name: "V-HTML source", exact: true })
+    .press("Control+End");
   await page
     .getByRole("textbox", { name: "V-HTML source", exact: true })
     .press("Control+Space");
@@ -811,7 +831,7 @@ test("an existing Vgame stays usable beside a Vchat manuscript over the page-cop
   await page
     .getByRole("textbox", { name: "Freeform game input" })
     .fill("\nIt continues independently.");
-  await page.getByRole("button", { name: "Append text", exact: true }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expectEditor(
     page,
     "The game has its own short page.\nIt continues independently.",
@@ -871,7 +891,7 @@ test("imported unsupported and missing-reference choice predicates disable safel
   await page
     .getByRole("textbox", { name: "Freeform game input" })
     .fill("\nThe story can still continue.");
-  await page.getByRole("button", { name: "Append text", exact: true }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expectEditor(page, initialProse + "\nThe story can still continue.");
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   await page.reload();
@@ -882,6 +902,137 @@ test("imported unsupported and missing-reference choice predicates disable safel
     page.getByRole("button", { name: "Missing reference", exact: true }),
   ).toBeDisabled();
   await expectEditor(page, initialProse + "\nThe story can still continue.");
+});
+
+test("portrait direct editing, Send commands, contextual tap/Tab completion and the guide are usable", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seed(page);
+  await expect(page.locator(".top-actions .connection-pill")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Light mode", exact: true }),
+  ).toHaveCount(0);
+  await setEditorText(page, "Edited directly.");
+  await page
+    .getByRole("textbox", { name: "Story manuscript" })
+    .press("Control+End");
+  await page.getByRole("textbox", { name: "Story manuscript" }).press("Enter");
+  await page.keyboard.insertText("Second line.");
+  await expectEditor(page, "Edited directly.\nSecond line.");
+  await page.getByRole("button", { name: "Undo game action" }).click();
+  await expectEditor(page, initialProse);
+  await page.getByRole("button", { name: "Redo game action" }).click();
+  await expectEditor(page, "Edited directly.\nSecond line.");
+  const input = page.getByRole("textbox", { name: "Freeform game input" });
+  await input.fill("Ordinary text");
+  await expect(
+    page.getByRole("listbox", { name: "V-HTML input suggestions" }),
+  ).toHaveCount(0);
+  await input.fill("<add:");
+  await page.getByRole("option", { name: "stat", exact: true }).click();
+  await expect(input).toHaveValue("<add:stat: ");
+  await input.fill(
+    '<add: stat: id: "direct-money" name: "Money" type: integer default: 20>',
+  );
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  expect(
+    (await currentStory(page)).vgame.objects.find(
+      (o: any) => o.id === "direct-money",
+    ).value,
+  ).toBe(20);
+  await expectEditor(page, "Edited directly.\nSecond line.");
+  await source(page, "");
+  const cm = page.getByRole("textbox", { name: "V-HTML source", exact: true });
+  await cm.click();
+  await page.keyboard.insertText("<ad");
+  await expect(
+    page.getByRole("listbox", { name: "V-HTML command completions" }),
+  ).toBeVisible();
+  await cm.press("Tab");
+  await expect(cm).toContainText("<add:");
+  await page
+    .getByRole("listbox", { name: "V-HTML command completions" })
+    .getByRole("option", { name: "stat", exact: true })
+    .click();
+  await expect(cm).toContainText("stat:");
+  const command = page.getByRole("textbox", {
+    name: "V-HTML command input",
+    exact: true,
+  });
+  await command.fill('<set: stat: "direct-money" value: 30>');
+  await page.getByRole("button", { name: "Send V-HTML", exact: true }).click();
+  expect(
+    (await currentStory(page)).vgame.objects.find(
+      (o: any) => o.id === "direct-money",
+    ).value,
+  ).toBe(30);
+  await page.getByText("V-HTML guide & examples", { exact: true }).click();
+  await expect(page.locator(".vgame-guide")).toContainText(
+    "UI, panel ve widget",
+  );
+  await closeTools(page);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: info.outputPath("vgame-green-mobile.png") });
+});
+
+test("a choice clears its alternatives, changes page, continues once and restores the decision with Undo", async ({
+  page,
+}) => {
+  const api = controlledGame();
+  await page.route(`${endpoint}/**`, (route) => api.handle(route));
+  await seed(page);
+  await apply(
+    page,
+    '<config: choice-new-page: true><option: id: "a" name: "Ask" group: "door" result: <page: append><ai: mode: react instruction: "Answer the question.">><option: id: "b" name: "Leave" group: "door" result: <page: append><ai>>',
+  );
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await idle(page);
+  const story = await currentStory(page);
+  expect(api.sent).toHaveLength(1);
+  expect(story.vgame.pages).toHaveLength(2);
+  expect(story.vgame.pages[0].text).toBe(initialProse);
+  await expectEditor(page, " The clock struck noon.");
+  await expect(
+    page.getByRole("button", { name: "Leave", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo game action" }).click();
+  await page.getByRole("button", { name: "Undo game action" }).click();
+  await expectEditor(page, initialProse);
+  await expect(
+    page.getByRole("button", { name: "Ask", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Leave", exact: true }),
+  ).toBeEnabled();
+});
+
+test("Generate opens a page atomically and cancellation leaves the prior manuscript intact", async ({
+  page,
+}) => {
+  const api = controlledGame();
+  await page.route(`${endpoint}/**`, (route) => api.handle(route));
+  await seed(page);
+  await apply(page, "<config: generation-new-page: true>");
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+  await idle(page);
+  expect((await currentStory(page)).vgame.pages).toHaveLength(2);
+  await expectEditor(page, " The clock struck noon.");
+  await page.getByRole("button", { name: "Undo game action" }).click();
+  expect((await currentStory(page)).vgame.pages).toHaveLength(1);
+  await expectEditor(page, initialProse);
+  api.hold();
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+  await expect.poll(() => api.sent.length).toBe(2);
+  await page.getByRole("button", { name: "Stop AI", exact: true }).click();
+  api.release();
+  await idle(page);
+  expect((await currentStory(page)).vgame.pages).toHaveLength(1);
+  await expectEditor(page, initialProse);
 });
 
 test("valid Unicode checkpoint files above 25 MiB round-trip while archived pages stay out of the writing DOM", async ({
@@ -911,13 +1062,11 @@ test("valid Unicode checkpoint files above 25 MiB round-trip while archived page
   expect(payload.byteLength).toBeGreaterThan(25 * 1024 * 1024);
   expect(payload.byteLength).toBeLessThan(128 * 1024 * 1024);
   await tab(page, "History");
-  await page
-    .getByLabel("Game checkpoint JSON")
-    .setInputFiles({
-      name: "unicode-archives.json",
-      mimeType: "application/json",
-      buffer: payload,
-    });
+  await page.getByLabel("Game checkpoint JSON").setInputFiles({
+    name: "unicode-archives.json",
+    mimeType: "application/json",
+    buffer: payload,
+  });
   const dialog = page.getByRole("dialog", { name: "Confirm game change" });
   await expect(dialog).toContainText("archive-0");
   await dialog

@@ -29,29 +29,29 @@
   --bar: #304869;
 }
 :root[data-workspace="vgame"] {
-  --bg: #e5e5e5;
-  --panel: #d9d9d9;
-  --card: #f4f4f4;
+  --bg: #e2e8e3;
+  --panel: #d5ded7;
+  --card: #f0f5f1;
   --text: #222;
   --muted: #606060;
-  --border: #b4b4b4;
-  --accent: #666;
-  --accent-bg: #d0d0d0;
-  --hover: #c3c3c3;
-  --bar: #cecece;
+  --border: #a8b9ac;
+  --accent: #4d8060;
+  --accent-bg: #cadbd0;
+  --hover: #bdd1c3;
+  --bar: #c8d6cc;
   --ai-passage: #4c647b;
 }
 :root[data-workspace="vgame"][data-theme="dark"] {
-  --bg: #202020;
-  --panel: #2b2b2b;
-  --card: #181818;
+  --bg: #202824;
+  --panel: #2b3530;
+  --card: #19211d;
   --text: #e4e4e4;
-  --muted: #b0b0b0;
-  --border: #4a4a4a;
-  --accent: #6a6a6a;
-  --accent-bg: #444;
-  --hover: #555;
-  --bar: #333;
+  --muted: #b0bdb4;
+  --border: #465b4d;
+  --accent: #7bb895;
+  --accent-bg: #3a5143;
+  --hover: #486552;
+  --bar: #303e35;
   --ai-passage: #b9c5d2;
 }
 .main-settings-backdrop {

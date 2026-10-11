@@ -43,6 +43,8 @@ export function createGameProject(text = ""): GameProject {
       reserveTokens: 1024,
       summary: "manual",
       globalDrawerOpen: false,
+      choiceNewPage: true,
+      generationNewPage: true,
     },
     history: [],
     future: [],
@@ -518,6 +520,7 @@ export function validateGameProject(value: unknown): value is GameProject {
           finite(o.order) &&
           typeof o.once === "boolean" &&
           typeof o.used === "boolean" &&
+          (o.resolved === undefined || typeof o.resolved === "boolean") &&
           owner(o.owner) &&
           commands(o.result) &&
           commands(o.conditions) &&
@@ -578,7 +581,10 @@ export function validateGameProject(value: unknown): value is GameProject {
       s.reserveTokens < 0 ||
       s.reserveTokens >= s.maxContextTokens ||
       !["manual", "disabled"].includes(s.summary) ||
-      typeof s.globalDrawerOpen !== "boolean"
+      typeof s.globalDrawerOpen !== "boolean" ||
+      (s.choiceNewPage !== undefined && typeof s.choiceNewPage !== "boolean") ||
+      (s.generationNewPage !== undefined &&
+        typeof s.generationNewPage !== "boolean")
     )
       return false;
     if (

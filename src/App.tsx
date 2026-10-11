@@ -27,8 +27,6 @@ import {
   Layers,
   Plug,
   Code2,
-  Sun,
-  Moon,
   Maximize2,
   Minimize2,
   Search,
@@ -1046,39 +1044,6 @@ export default function App() {
                 ? "Saving…"
                 : "Saved"}
           </span>
-          <button
-            className="connection-pill"
-            disabled={createBusy || gameBusy}
-            onClick={() => {
-              setCreating(false);
-              setLibrary(false);
-              setPanel("connection");
-            }}
-          >
-            {
-              {
-                kobold: "KoboldCpp",
-                openai: "OpenAI compatible",
-                horde: "AI Horde",
-                openrouter: "OpenRouter",
-                nanogpt: "NanoGPT",
-              }[story.connection.kind]
-            }
-          </button>
-          <button
-            className="icon"
-            aria-label={dark ? "Light mode" : "Dark mode"}
-            onClick={() => {
-              setDark(!dark);
-              void storage.setPref("appearance-compact", {
-                dark: !dark,
-                font,
-                width,
-              });
-            }}
-          >
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
         </div>
       </header>
       {(error || store.saveError) && (

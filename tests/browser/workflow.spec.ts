@@ -134,7 +134,13 @@ test("desktop and mobile surfaces remain usable", async ({ page }) => {
     page.getByRole("textbox", { name: "Story manuscript" }),
   ).toBeVisible();
   await page.screenshot({ path: "test-results/desktop.png", fullPage: true });
-  await page.getByRole("button", { name: "Light mode" }).click();
+  await page
+    .getByRole("button", { name: "Main settings", exact: true })
+    .click();
+  await page
+    .getByRole("combobox", { name: "Main appearance" })
+    .selectOption("light");
+  await page.getByRole("button", { name: "Close main settings" }).click();
   await page.screenshot({ path: "test-results/light.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
 

@@ -87,6 +87,7 @@ describe("Vgame transactions, pages and options", () => {
       money +
         `<option: id: "wake" name: "Wake man" result: <page: append><ai: instruction: "He wakes.">>`,
     );
+    p.settings.choiceNewPage = false;
     const action = executeOption(p, "wake");
     expect(action.project.pages).toHaveLength(1);
     const next = executeVHTML(finishGameAction(action.project), `<page: next>`);
