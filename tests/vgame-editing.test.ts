@@ -101,6 +101,27 @@ describe("decision groups and page flow", () => {
 });
 describe("contextual V-HTML completion", () => {
   const list = (text: string) => vhtmlCompletions(text, text.length);
+  it("explains suggested commands using executable examples and describes real references", () => {
+    const game = executeVHTML(
+      createGameProject(),
+      '<add: stat: id: "money" name: "Para" type: integer default: 50><add: event: id: "chase" name: "Chase"><display: id: "money-view" target: "money" style: counter ui: global>',
+    ).project;
+    for (const item of list("<")) {
+      expect(item.kind).toBe("command");
+      expect(item.detail).not.toBe("");
+      expect(() =>
+        executeVHTML(
+          item.label === "add" ? createGameProject() : game,
+          item.example,
+          { confirmed: true },
+        ),
+      ).not.toThrow();
+    }
+    const ref = vhtmlCompletions('<set: stat: "mo', 15, game)[0];
+    expect(ref.kind).toBe("reference");
+    expect(ref.detail).toContain("Para");
+    expect(ref.example).toBe('"money"');
+  });
   it("opens only inside commands, never in prose, closed tags, strings or comments", () => {
     for (const text of [
       "Normal prose",

@@ -1,11 +1,15 @@
 import type { GameProject } from "./types";
 import { VHTML_FIELDS, VHTML_KINDS, VHTML_COMMANDS } from "./runtime";
+import { completionHelp } from "./completionHelp";
 
 export interface VHTMLCompletion {
   label: string;
   insert: string;
   from: number;
   to: number;
+  kind: "command" | "object" | "field" | "value" | "reference";
+  detail: string;
+  example: string;
 }
 const kinds = VHTML_KINDS;
 const values: Record<string, string[]> = {
@@ -112,6 +116,7 @@ export function vhtmlCompletions(
     prefix: string,
     from: number,
     insert: (choice: string) => string,
+    category?: VHTMLCompletion["kind"],
   ) =>
     choices
       .filter((c) => c.toLowerCase().startsWith(prefix.toLowerCase()))
@@ -136,7 +141,15 @@ export function vhtmlCompletions(
             while (text[to] === " ") to++;
           }
         }
-        return { label, insert: inserted, from, to };
+        const kind = category ?? (kinds.includes(label) ? "object" : "field");
+        return {
+          label,
+          insert: inserted,
+          from,
+          to,
+          kind,
+          ...completionHelp(label, kind, command, game),
+        };
       });
   if (rootEnd === cursor && !quoted)
     return build(
@@ -146,6 +159,7 @@ export function vhtmlCompletions(
       command,
       rootEnd - command.length,
       (c) => c + ": ",
+      "command",
     );
   if (!VHTML_FIELDS[command] || !/^\s*:/.test(text.slice(rootEnd, cursor)))
     return [];
@@ -213,6 +227,7 @@ export function vhtmlCompletions(
       lastText.replace(/^['"]/, ""),
       from,
       JSON.stringify,
+      "reference",
     );
   }
   if (quoted) return [];
@@ -226,6 +241,7 @@ export function vhtmlCompletions(
       lastText,
       last ? rootEnd + last.index! : cursor,
       (c) => c + " ",
+      "value",
     );
   }
   if (noValue && !(command === "add" && kinds.includes(field))) {

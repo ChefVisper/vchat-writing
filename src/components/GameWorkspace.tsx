@@ -514,6 +514,12 @@ function VHTMLInput({
             "aria-multiline": "true",
             spellcheck: "false",
           }),
+          EditorView.domEventHandlers({
+            blur: () => {
+              setCompletions([]);
+              return false;
+            },
+          }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !syncing.current)
               current.current.onChange(update.state.doc.toString());
@@ -586,6 +592,17 @@ function VHTMLInput({
         selected={selected}
         onChoose={accept}
         name="V-HTML command completions"
+        getAnchor={() => {
+          const editor = view.current;
+          if (!editor?.hasFocus) return null;
+          const rect = editor.coordsAtPos(editor.state.selection.main.head);
+          return rect
+            ? { left: rect.left, top: rect.top, bottom: rect.bottom }
+            : null;
+        }}
+        getOwner={() => host.current}
+        onSelect={setSelected}
+        onDismiss={() => setCompletions([])}
       />
       <p className="help">
         Type &lt; for suggestions, then Tab or tap to insert. Parser errors show

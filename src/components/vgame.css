@@ -120,24 +120,132 @@
   text-decoration: underline wavy #ed7979;
   text-decoration-skip-ink: none;
 }
-.vgame-completions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 4px 0;
-  padding: 5px;
+.vgame-completion-popup {
+  position: fixed;
+  z-index: 120;
+  display: grid;
+  grid-template-columns: minmax(160px, 215px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   border: 1px solid var(--border);
-  background: var(--card);
-  max-height: 156px;
-  overflow: auto;
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 5px 20px #0005;
+  overflow: hidden;
+  font:
+    12px/1.45 Arial,
+    sans-serif;
+}
+.vgame-completion-list {
+  min-height: 0;
+  max-height: 238px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  scrollbar-width: thin;
+}
+.vgame-completion-list button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 0;
+  border-radius: 3px;
+  padding: 5px 8px;
+  min-height: 34px;
+  width: 100%;
+  text-align: left;
+  font:
+    12px/1.4 ui-monospace,
+    Consolas,
+    monospace;
+  background: transparent;
+  color: var(--text);
+}
+.vgame-completion-list button svg {
+  color: var(--accent);
   flex-shrink: 0;
 }
-.vgame-completions button {
-  min-height: 32px;
+.vgame-completion-list button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.vgame-completions [aria-selected="true"] {
-  border-color: var(--accent);
+.vgame-completion-list button:hover,
+.vgame-completion-list [aria-selected="true"] {
   background: var(--hover);
+}
+.vgame-completion-list [aria-selected="true"] {
+  box-shadow: inset 2px 0 var(--accent);
+}
+.vgame-completion-detail {
+  padding: 10px 12px;
+  border-left: 1px solid var(--border);
+  min-width: 0;
+  overflow: auto;
+}
+.vgame-completion-detail strong {
+  color: var(--accent);
+  font:
+    13px ui-monospace,
+    Consolas,
+    monospace;
+}
+.vgame-completion-detail p {
+  margin: 7px 0;
+}
+.vgame-completion-detail code {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 11px;
+}
+.vgame-completion-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  padding: 3px 5px 3px 9px;
+  font-size: 10px;
+}
+.vgame-completion-footer button {
+  padding: 3px;
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.vgame-completion-popup[data-compact="true"] {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+.vgame-completion-popup[data-compact="true"] .vgame-completion-detail {
+  display: none;
+}
+.vgame-completion-popup[data-compact="true"] .vgame-completion-list {
+  grid-column: 1 / -1;
+}
+@media (max-width: 640px) {
+  .vgame-completion-popup {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+  .vgame-completion-list {
+    max-height: 150px;
+  }
+  .vgame-completion-list button {
+    min-height: 36px;
+  }
+  .vgame-completion-detail {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    max-height: 100px;
+    padding: 7px 10px;
+  }
+  .vgame-completion-detail p {
+    margin: 4px 0;
+  }
 }
 .vgame-input-editor {
   display: flex;

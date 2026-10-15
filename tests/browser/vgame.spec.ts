@@ -980,6 +980,104 @@ test("portrait direct editing, Send commands, contextual tap/Tab completion and 
   await page.screenshot({ path: info.outputPath("vgame-green-mobile.png") });
 });
 
+test("completion floats beside the source caret with keyboard selection, descriptions and no layout shift", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await seed(page);
+  await source(page, "");
+  const cm = page.getByRole("textbox", { name: "V-HTML source", exact: true });
+  const proseBefore = await page.locator(".vgame-prose").boundingBox();
+  await cm.click();
+  await page.keyboard.insertText("<");
+  const popup = page.locator(".vgame-completion-popup");
+  await expect(popup).toBeVisible();
+  await expect(popup.locator(".vgame-completion-detail")).toContainText(
+    "Yeni bir oyun verisi",
+  );
+  await expect(popup.locator("code")).toContainText("<add:");
+  const caret = await page.evaluate(() => {
+    const r = getSelection()!.getRangeAt(0).getBoundingClientRect();
+    return { left: r.left, top: r.top, bottom: r.bottom };
+  });
+  const box = (await popup.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(8);
+  expect(box.x + box.width).toBeLessThanOrEqual(1272);
+  expect(
+    Math.min(
+      Math.abs(box.y - caret.bottom),
+      Math.abs(box.y + box.height - caret.top),
+    ),
+  ).toBeLessThan(12);
+  const detail = (await popup
+      .locator(".vgame-completion-detail")
+      .boundingBox())!,
+    list = (await popup.locator("[role=listbox]").boundingBox())!;
+  expect(detail.x).toBeGreaterThan(list.x);
+  expect(await page.locator(".vgame-prose").boundingBox()).toEqual(proseBefore);
+  await cm.press("ArrowDown");
+  await expect(
+    popup.getByRole("option", { name: "define", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(popup.locator(".vgame-completion-detail")).toContainText(
+    "başlangıç",
+  );
+  await cm.press("Tab");
+  await expect(cm).toContainText("<define:");
+  await cm.press("Escape");
+  await expect(popup).toHaveCount(0);
+  await cm.press("Control+a");
+  await page.keyboard.insertText("<add: stat: ");
+  await expect(popup).toBeVisible();
+  await page.screenshot({ path: info.outputPath("completion-desktop.png") });
+  await page.getByRole("button", { name: "Close game tools" }).click();
+  await expect(popup).toHaveCount(0);
+});
+
+test.describe("touch completion", () => {
+  test.use({ hasTouch: true });
+  test("Send completion opens above the caret, fits portrait and a reduced viewport, and accepts taps", async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seed(page);
+    const input = page.getByRole("textbox", { name: "Freeform game input" });
+    const proseBefore = await page.locator(".vgame-prose").boundingBox();
+    await input.fill("<add:");
+    const popup = page.locator(".vgame-completion-popup");
+    await expect(popup).toBeVisible();
+    const box = (await popup.boundingBox())!,
+      inputBox = (await input.boundingBox())!;
+    expect(box.y + box.height).toBeLessThan(inputBox.y + 20);
+    expect(box.x).toBeGreaterThanOrEqual(8);
+    expect(box.x + box.width).toBeLessThanOrEqual(382);
+    expect(await page.locator(".vgame-prose").boundingBox()).toEqual(
+      proseBefore,
+    );
+    const detail = (await popup
+        .locator(".vgame-completion-detail")
+        .boundingBox())!,
+      list = (await popup.locator("[role=listbox]").boundingBox())!;
+    expect(detail.y).toBeGreaterThanOrEqual(list.y + list.height);
+    await popup.getByRole("option", { name: "stat", exact: true }).tap();
+    await expect(input).toHaveValue("<add:stat: ");
+    await expect(input).toBeFocused();
+    await page.screenshot({ path: info.outputPath("completion-mobile.png") });
+    await page.setViewportSize({ width: 390, height: 500 });
+    await input.fill("<add:");
+    await expect(popup).toBeVisible();
+    const reduced = (await popup.boundingBox())!;
+    expect(reduced.y).toBeGreaterThanOrEqual(8);
+    expect(reduced.y + reduced.height).toBeLessThanOrEqual(492);
+    await popup.getByRole("option", { name: "stat", exact: true }).tap();
+    await input.fill("<ad");
+    await input.press("Enter");
+    await expect(input).toHaveValue("<ad\n");
+    await input.fill("Ordinary text");
+    await expect(popup).toHaveCount(0);
+  });
+});
+
 test("a choice clears its alternatives, changes page, continues once and restores the decision with Undo", async ({
   page,
 }) => {
