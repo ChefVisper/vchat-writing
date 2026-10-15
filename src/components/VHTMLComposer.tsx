@@ -286,10 +286,10 @@ export function VHTMLComposer({
     requestAnimationFrame(() => {
       input.current?.focus();
       input.current?.setSelectionRange(
-        item.from + item.insert.length,
-        item.from + item.insert.length,
+        item.from + (item.cursorOffset ?? item.insert.length),
+        item.from + (item.cursorOffset ?? item.insert.length),
       );
-      update(next, item.from + item.insert.length);
+      update(next, item.from + (item.cursorOffset ?? item.insert.length));
     });
   };
   return (

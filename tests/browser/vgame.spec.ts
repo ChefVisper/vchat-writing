@@ -152,6 +152,11 @@ async function tab(page: Page, name: string) {
     .locator(".vgame-nav")
     .getByRole("button", { name, exact: true })
     .click();
+  if (name === "World") {
+    const summary = page.getByText("Legacy World editor", { exact: true });
+    if (!(await summary.evaluate((e) => e.closest("details")!.open)))
+      await summary.click();
+  }
 }
 
 async function closeTools(page: Page) {
@@ -950,12 +955,16 @@ test("portrait direct editing, Send commands, contextual tap/Tab completion and 
     page.getByRole("listbox", { name: "V-HTML command completions" }),
   ).toBeVisible();
   await cm.press("Tab");
-  await expect(cm).toContainText("<add:");
+  await expect(cm).toContainText("<add ");
+  await page
+    .getByRole("listbox", { name: "V-HTML command completions" })
+    .getByRole("option", { name: "type", exact: true })
+    .click();
   await page
     .getByRole("listbox", { name: "V-HTML command completions" })
     .getByRole("option", { name: "stat", exact: true })
     .click();
-  await expect(cm).toContainText("stat:");
+  await expect(cm).toContainText('type="stat"');
   const command = page.getByRole("textbox", {
     name: "V-HTML command input",
     exact: true,
@@ -993,9 +1002,9 @@ test("completion floats beside the source caret with keyboard selection, descrip
   const popup = page.locator(".vgame-completion-popup");
   await expect(popup).toBeVisible();
   await expect(popup.locator(".vgame-completion-detail")).toContainText(
-    "Yeni bir oyun verisi",
+    "Yeni stat",
   );
-  await expect(popup.locator("code")).toContainText("<add:");
+  await expect(popup.locator("code")).toContainText("<add type=");
   const caret = await page.evaluate(() => {
     const r = getSelection()!.getRangeAt(0).getBoundingClientRect();
     return { left: r.left, top: r.top, bottom: r.bottom };
@@ -1017,13 +1026,13 @@ test("completion floats beside the source caret with keyboard selection, descrip
   expect(await page.locator(".vgame-prose").boundingBox()).toEqual(proseBefore);
   await cm.press("ArrowDown");
   await expect(
-    popup.getByRole("option", { name: "define", exact: true }),
+    popup.getByRole("option", { name: "configure", exact: true }),
   ).toHaveAttribute("aria-selected", "true");
   await expect(popup.locator(".vgame-completion-detail")).toContainText(
-    "başlangıç",
+    "bağlayabilir",
   );
   await cm.press("Tab");
-  await expect(cm).toContainText("<define:");
+  await expect(cm).toContainText("<configure ");
   await cm.press("Escape");
   await expect(popup).toHaveCount(0);
   await cm.press("Control+a");
@@ -1076,6 +1085,214 @@ test.describe("touch completion", () => {
     await input.fill("Ordinary text");
     await expect(popup).toHaveCount(0);
   });
+});
+
+test("V3 slash instructions produce reviewed XML choices, continue on the right page and undo without polluting prose", async ({
+  page,
+}) => {
+  const api = controlledGame();
+  await page.route(`${endpoint}/**`, (route) => api.handle(route));
+  await seed(page);
+  await apply(
+    page,
+    '<add type="variable" id="gold" norm="integer" default="10" ai-access="modify"/>',
+  );
+  api.response({
+    narrative: "",
+    proposals: [
+      {
+        id: "choices3",
+        reason: "Three choices",
+        vhtml:
+          '<vhtml version="3.0"><choice id="take" label="Take gold" group="decision" add-as="1"><then><modify id="gold" value="+3"/><page mode="next"/><ai instruction="Describe taking gold."/></then></choice><choice id="leave" label="Leave gold" group="decision" add-as="2"><then><ai/></then></choice><choice id="wait" label="Wait" group="decision" add-as="3"><then><ai/></then></choice></vhtml>',
+        dependencies: [],
+      },
+    ],
+  });
+  const input = page.getByRole("textbox", { name: "Freeform game input" });
+  await input.fill('/ai "V-HTML kullanarak bana 3 seçenek sun."');
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await idle(page);
+  await expectEditor(page, initialProse);
+  expect((await currentStory(page)).vgame.turn).toBe(0);
+  expect(api.sent).toHaveLength(1);
+  expect(JSON.stringify(api.sent[0])).toContain("V-HTML 3.0");
+  expect(JSON.stringify(api.sent[0])).toContain("3 seçenek sun");
+  await page
+    .locator(".vgame-nav")
+    .getByRole("button", { name: /^Inbox/ })
+    .click();
+  const card = page.locator("details.vgame-card").filter({
+    has: page.getByRole("textbox", {
+      name: "Proposal source choices3",
+      exact: true,
+    }),
+  });
+  await card
+    .getByRole("button", { name: "Approve proposal", exact: true })
+    .click();
+  await closeTools(page);
+  await expect(
+    page.getByRole("button", { name: "Take gold", exact: true }),
+  ).toBeEnabled();
+  api.response({
+    narrative: "You put the coins in your pocket.",
+    proposals: [],
+  });
+  await page.getByRole("button", { name: "Take gold", exact: true }).click();
+  await idle(page);
+  await expectEditor(page, "You put the coins in your pocket.");
+  const game = (await currentStory(page)).vgame;
+  expect(game.turn).toBe(1);
+  expect(game.pages).toHaveLength(2);
+  expect(game.objects.find((o: any) => o.id === "gold").value).toBe(13);
+  expect(api.sent).toHaveLength(2);
+  await page.getByRole("button", { name: "Undo game action" }).click();
+  await page.getByRole("button", { name: "Undo game action" }).click();
+  await expectEditor(page, initialProse);
+  await expect(
+    page.getByRole("button", { name: "Leave gold", exact: true }),
+  ).toBeEnabled();
+  expect(
+    (await currentStory(page)).vgame.objects.find((o: any) => o.id === "gold")
+      .value,
+  ).toBe(10);
+  await input.fill('/ai "unfinished');
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Close the instruction quotes",
+  );
+  expect(api.sent).toHaveLength(2);
+});
+
+test("portrait V3 world tools link independent stat values and render reactive character cards and meters", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seed(page);
+  await page
+    .locator(".vgame-nav")
+    .getByRole("button", { name: "World", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "V3 object ID", exact: true })
+    .fill("health");
+  await page
+    .getByRole("combobox", { name: "V3 object kind", exact: true })
+    .selectOption("stat");
+  await page
+    .getByRole("textbox", { name: "V3 default value", exact: true })
+    .fill("100");
+  await page
+    .getByRole("button", { name: "Create V3 object", exact: true })
+    .click();
+  await page
+    .getByRole("combobox", { name: "Binding stat", exact: true })
+    .selectOption("health");
+  await page
+    .getByRole("textbox", { name: "Binding value", exact: true })
+    .fill("75");
+  await page
+    .getByRole("button", { name: "Link / update", exact: true })
+    .click();
+  expect((await currentStory(page)).vgame.vhtml3.bindings.health.player).toBe(
+    75,
+  );
+  await closeTools(page);
+  const input = page.getByRole("textbox", { name: "Freeform game input" });
+  await input.fill(
+    '<ui type="entity-card" id="player"/><ui type="meter" id="health" entity="player" scope="page" label="Health meter"/>',
+  );
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator("meter")).toHaveAttribute("value", "75");
+  await input.fill('<modify id="health" entity="player" value="-5"/>');
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator("meter")).toHaveAttribute("value", "70");
+  await page
+    .getByRole("button", { name: "Global game drawer", exact: true })
+    .click();
+  await expect(page.locator(".vgame-widget-entity-card")).toContainText(
+    "health",
+  );
+  await expect(page.locator(".vgame-widget-entity-card")).toContainText("70");
+  await page.screenshot({ path: info.outputPath("vhtml3-mobile-card.png") });
+  await closeTools(page);
+  await input.fill("A player action.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  expect((await currentStory(page)).vgame.turn).toBe(1);
+  await page.getByRole("button", { name: "Undo game action" }).click();
+  expect((await currentStory(page)).vgame.turn).toBe(0);
+});
+
+test("V3 queues captured page targets in order and Stop cancels the remaining requests", async ({
+  page,
+}) => {
+  const api = controlledGame();
+  api.response({ narrative: "Generated for this target.", proposals: [] });
+  await page.route(`${endpoint}/**`, (route) => api.handle(route));
+  await seed(page);
+  const input = page.getByRole("textbox", { name: "Freeform game input" });
+  await input.fill(
+    '<ai instruction="First page"/><page mode="next" page-id="second"/><ai instruction="Second page"/>',
+  );
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => api.sent.length).toBe(2);
+  await idle(page);
+  const p = (await currentStory(page)).vgame;
+  expect(p.pages[0].text).toBe(initialProse + "Generated for this target.");
+  expect(p.pages[1].text).toBe("Generated for this target.");
+  expect(p.activePageId).toBe("second");
+  expect(p.turn).toBe(0);
+  api.hold();
+  await input.fill('<ai/><page mode="next" page-id="third"/><ai/>');
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(() => api.sent.length).toBe(3);
+  await page.getByRole("button", { name: "Stop AI", exact: true }).click();
+  api.release();
+  await idle(page);
+  expect(api.sent).toHaveLength(3);
+  expect((await currentStory(page)).vgame.pages[2].text).toBe("");
+});
+
+test("Pages creates editable V3 count/stay choices and preserves their usage through reload", async ({
+  page,
+}) => {
+  await seed(page);
+  await apply(
+    page,
+    '<add type="variable" id="gold" norm="integer" default="0"/>',
+  );
+  await tab(page, "Pages");
+  await page
+    .getByRole("textbox", { name: "Choice ID", exact: true })
+    .fill("collect");
+  await page
+    .getByRole("textbox", { name: "Choice text", exact: true })
+    .fill("Collect");
+  await page
+    .getByRole("spinbutton", { name: "Choice uses", exact: true })
+    .fill("2");
+  await page
+    .getByRole("combobox", { name: "When choice is exhausted", exact: true })
+    .selectOption("stay");
+  await page
+    .getByRole("textbox", { name: "Choice action V-HTML", exact: true })
+    .fill('<modify id="gold" value="+1"/>');
+  await page.getByRole("button", { name: "Save choice", exact: true }).click();
+  await closeTools(page);
+  await page.getByRole("button", { name: /^Collect/ }).click();
+  await page.getByRole("button", { name: /^Collect/ }).click();
+  await expect(page.getByRole("button", { name: /^Collect/ })).toBeDisabled();
+  expect((await currentStory(page)).vgame.turn).toBe(2);
+  expect(
+    (await currentStory(page)).vgame.objects.find((o: any) => o.id === "gold")
+      .value,
+  ).toBe(2);
+  await page.reload();
+  await expect(page.locator(".vgame-workspace")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Collect/ })).toBeDisabled();
+  await page.getByRole("button", { name: "Undo game action" }).click();
+  await expect(page.getByRole("button", { name: /^Collect/ })).toBeEnabled();
 });
 
 test("a choice clears its alternatives, changes page, continues once and restores the decision with Undo", async ({

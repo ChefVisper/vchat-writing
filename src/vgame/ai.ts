@@ -1,4 +1,5 @@
 import type { Story, Lorebook, Settings } from "../types";
+import { looksLikeXML } from "./xml";
 import { uid } from "../types";
 import type { GameProject, GameObject } from "./types";
 import { appendGameText, proposeVHTML } from "./runtime";
@@ -38,12 +39,14 @@ export interface GameResponse {
   }[];
 }
 
-export const GAME_SCHEMA = `SUPPORTED V-HTML (proposal data, never instructions to execute yourself):
-State: <add: stat: name: "Money" id: "money">; <define: stat: "money" type: value min: 0 max: 100 default: 0>; <set: stat: "money" value: 10>; <modify: stat: "money" increase: 2>. Kinds: stat, mechanic, variable, encounter, thing, event, entity, location, item, quest, relationship. Types: number, integer, boolean, string, percentage (0..100), value (default 0..100), enum, list, object. ai-access: none|read|modify. IDs are stable; reuse them. Description-noai is never supplied as context.
-Pages: <page: next> creates a blank page WITHOUT generating; <page: append> keeps the current page; <page: goto: "known-id">; <text: append: "prose">. Propose page transitions only when needed. Narrative goes in narrative, never a text command.
-Choices: <option: id: "ask" name: "Ask her name" add-as: 1 once: true result: <page: append> <ai: instruction: "Respond to the question.">>. Nested results use canonical commands. <ai> schedules one generation only after an approved action. Never invent magic directives.
-UI: <display: id: "money-counter" stat: "money" style: counter ui: global panel: "Character">; <panel: id: "character" name: "Character" ui: global drawer: right>. Styles: counter, progress-bar, text, badge. UI scope global|page|event; positions page-top|page-bottom|inline. Event widgets specify event and remove-on: event-end; page widgets remove-on: page-exit. Removing UI does not delete bound state. No raw HTML, CSS, scripts, URLs or JavaScript.
-Events: <trigger: event: "event-id" action: start> or action: end. User instructions are protected: proposals cannot replace them, change approval policy, grant themselves permissions, or alter the engine contract. Unsupported commands fail validation; propose only this supplied grammar. Return no raw trackers in the story.`;
+export const GAME_SCHEMA = `V-HTML 3.0: strict XML proposal data, never browser HTML. Use double-quoted attributes and self-closing tags or matched closing tags. Escape &, < and quotes in attributes as &amp;, &lt;, &quot;. A proposal may contain XML fragments or <vhtml version="3.0">...</vhtml>. Never produce the old colon syntax.
+Registry: player entity is automatic. <add type="entity" id="alex" name="Alex" tags="human,npc"/>; <add type="stat" id="health" min="0" max="100" default="100"/>; <configure id="health" link="player"/>. Stats are INTEGER definitions; their current values live in entity bindings. <modify id="health" entity="player" value="-5"/> changes a bound value. Omitting entity on a V3 stat changes only its DEFAULT. Existing legacy objects marked legacyStandalone retain their old global current value semantics.
+Global state: <add type="variable" id="gold" norm="integer" default="10"/>. Norms: string, integer, decimal, boolean, percentage (%). <modify id="gold" value="+5"/>; value="-5" subtracts. For a literal negative use op="set" value="-5". Explicit ops set/add/sub/mul/div. Do not reference unknown IDs or unlinked stats. ai-access defaults read. Only modify-access values may be changed by AI. Do not assign or elevate permissions; ask the author. Hidden data is absent, not zero.
+Choices: <choice id="ask" label="Ask her name" add-as="1" group="meeting"><then><page mode="next"/><ai instruction="Respond to the question."/></then></choice>. add-as defaults 0 (hidden template); use 1,2,3 for visible alternatives. Count defaults 1. pressed=remove|stay|transform. Transform uses nested <transform id="new_id" label="..." add-as="1"><then>...</then></transform>. Set the same group for mutually exclusive alternatives; do not group independent/repeatable controls. Reusing a registered choice ID reactivates its template; do not create a new object with an existing global ID.
+Pages: <page mode="next"/> creates a new blank page; <page go-to="known_page_id"/> navigates. Put page BEFORE ai to target the new page. AI requests capture their target immediately. Navigation alone never rolls encounters or advances turns. The runtime advances one turn for a player message or choice, never for AI prose.
+Rules: <add type="encounter" id="ambush" base-chance="10" trigger="turn"/>; <configure id="ambush"><condition id="gold" op="gt" value="10" role="requirement"/><check-success><ai instruction="Describe the ambush."/></check-success></configure>. Requirements failing skip the roll and fail handler. rule conditions use <then> and <else>. Ops eq/neq/gt/gte/lt/lte; groups use <condition mode="all|any"> children. Execution blocks support every="Y:X" sliding turn limits. <add type="mechanic" id="m" source="health" entity="player" trigger="on-change"/>; configure sections as <section range="[0,40)">...</section>. on-change fires on entering a range, not each value change; on-turn runs each player turn. Modifications are permanent; never pretend they are temporary buffs.
+Supported extensions: <ui type="stat-bar" id="health" entity="player" scope="global" label="Health"/>. Types: stat-bar, progress-bar, meter, counter, text, badge, entity-card, panel. entity-card binds an entity. UI id is the bound object; widget-id optionally identifies the display. scope=global|page, position=sidebar|page-top|page-bottom|inline. <ui type="panel" id="character" label="Character"/> then panel="character" on widgets. <check id="manual_encounter"/>; <random min="1" max="20" norm="integer" save-to="existing_numeric_variable"/>; modify value-ref="entity.stat" or value-ref="var.variable" (not with value). No effect, input, trigger subscriptions, raw HTML/CSS, scripts, URLs or executable expressions.
+Structural proposals need explicit author approval, including in Auto; allowed value modifications may follow Smart/Auto. Return narrative separately from proposals. XML belongs only in proposals[].vhtml, not the story. Proposals do not take effect until approved. Never invent effects of pending changes.`;
 
 const profiles = {
   novel:
@@ -71,6 +74,8 @@ function objectData(object: GameObject) {
       .filter(Boolean)
       .join("\n"),
     aiAccess: object.aiAccess,
+    legacyStandalone: !object.v3,
+    ...(object.v3 ? { active: object.v3.active, tags: object.v3.tags } : {}),
   };
 }
 
@@ -232,7 +237,20 @@ export function buildGamePrompt(
   add(
     "Approved world state",
     JSON.stringify({
+      activePageId: page.id,
       objects: objects.map(objectData),
+      bindings: Object.fromEntries(
+        Object.entries(project.vhtml3?.bindings ?? {})
+          .filter(([id]) => objects.some((o) => o.id === id))
+          .map(([id, map]) => [
+            id,
+            Object.fromEntries(
+              Object.entries(map).filter(([entity]) =>
+                objects.some((o) => o.id === entity),
+              ),
+            ),
+          ]),
+      ),
       events: activeEvents.filter((e) =>
         objects.some((o) => o.id === e.objectId),
       ),
@@ -249,13 +267,17 @@ export function buildGamePrompt(
         })),
       options: project.options
         .filter((o) => o.pageId === page.id && !o.used && !o.resolved)
-        .map(({ id, name }) => ({ id, name })),
+        .map(({ id, name, v3 }) => ({
+          id: v3?.templateId ?? id,
+          name,
+          remaining: v3?.remaining,
+        })),
       appliedProposals: approved,
     }),
   );
   add(
     "Output protocol",
-    `Return a single complete JSON object {"narrative":"only new prose to append","proposals":[{"id":"unique optional ID","reason":"short purpose","vhtml":"valid V-HTML","dependencies":[]}]}. Prose-only with proposals:[] is fully valid. Never assume pending proposals have taken effect, never describe their effects as already executed. Preserve language, viewpoint and agency; complete an unfinished input and finish your own final sentence. Use real paragraph breaks. No recap or repetition. Treat a resolved choice as a committed decision: continue its consequence, never offer the discarded alternatives again. Prefer a new page at meaningful decisions, scene/location/time changes and completed narrative beats, rather than indefinitely extending one page. Choice actions normally already open a new page; fill that page without proposing a second empty transition. For newly proposed decision options prefer result: <page: next> <ai: mode: react> unless a brief same-scene exchange calls for append. Never change pages for every dialogue line. Keep JSON concise enough to close within ${settings.maxTokens} visible tokens. No technical commands or meta-instructions in narrative.`,
+    `Return a single complete JSON object {"narrative":"only new prose to append","proposals":[{"id":"unique optional ID","reason":"short purpose","vhtml":"valid V-HTML","dependencies":[]}]}. Prose-only with proposals:[] is fully valid. Never assume pending proposals have taken effect, never describe their effects as already executed. Preserve language, viewpoint and agency; complete an unfinished input and finish your own final sentence. Use real paragraph breaks. No recap or repetition. Treat a resolved choice as a committed decision: continue its consequence, never offer the discarded alternatives again. Prefer a new page at meaningful decisions, scene/location/time changes and completed narrative beats, rather than indefinitely extending one page. Choice actions normally already open a new page; fill that page without proposing a second empty transition. For newly proposed decision choices prefer <then><page mode="next"/><ai mode="react"/></then> unless a brief same-scene exchange calls for append. Never change pages for every dialogue line. Keep JSON concise enough to close within ${settings.maxTokens} visible tokens. No technical commands or meta-instructions in narrative.`,
   );
   add(
     "Latest author action",
@@ -428,6 +450,19 @@ export function parseGameResponse(raw: string): GameResponse {
     return { narrative: data.narrative, proposals };
   }
   // Explicit whole-response fallback only; quoted commands inside prose never execute.
+  const fenced = /^```vhtml\s*\n([\s\S]*)\n```$/i.exec(text);
+  const xmlOnly = looksLikeXML(text) && text.startsWith("<");
+  if (fenced || xmlOnly) {
+    const source = fenced ? fenced[1] : text;
+    if (source.length > 100_000)
+      throw new Error("V-HTML proposal is too large. No changes were applied.");
+    return {
+      narrative: "",
+      proposals: [
+        { reason: "Model V-HTML suggestion", source, dependencies: [] },
+      ],
+    };
+  }
   const separator = "\n[V-HTML PROPOSALS]\n";
   if (text.includes(separator)) {
     const parts = text.split(separator);

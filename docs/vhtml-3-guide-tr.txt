@@ -1,0 +1,156 @@
+V-HTML 3.0 — Vgame kısa rehberi
+
+V-HTML, XML tabanlı bir oyun komut dilidir. Browser HTML veya JavaScript değildir.
+Özellikleri çift tırnakla yaz; tekil etiketi /> ile, bloğu eşleşen </etiket> ile kapat.
+& için &amp;, < için &lt;, özellik içindeki çift tırnak için &quot; kullan.
+
+NEREYE YAZILIR?
+- Ana Send alanı: normal metin hikâyeye eklenir. < ile başlayan giriş XML olarak
+  çalışır. Normal metindeki rastgele etiketler kendiliğinden çalışmaz.
+- /ai "talimat": hikâyeye metin eklemeden AI'a tek kullanımlık yönlendirme gönderir.
+  Örnek: /ai "V-HTML 3.0 kullanarak 3 seçenek öner; ilki altını artırsın."
+  AI'ın kod önerileri Inbox'ta bekler; onaylamadan oyun durumuna uygulanmaz.
+  Smart/Auto yalnız izinli değer değişikliklerini otomatik uygulayabilir;
+  yeni nesneler, seçenekler, kurallar ve UI her zaman açık onay ister.
+- V-HTML menüsünün altındaki komut girişinden XML gönderilebilir.
+- Büyük kaynak editörü: önce Preview, sonra Apply. XML'deki add oluşturma içindir;
+  mevcut kimlikle add hatadır. Değiştirmek için configure veya modify kullan.
+  Eski "Edit canonical definitions" yalnız legacy iki nokta sözdizimi içindir.
+- < yazınca imleç yanında öneriler açılır. Özellik ekleyince imleç tırnak arasına
+  gelir. Ok tuşları seçer; Tab veya dokunma ekler. Escape kapatır. Enter alt satır,
+  komut girişlerinde Ctrl+Enter gönderir. Normal anlatımda tamamlama açılmaz.
+
+1. UI, panel ve widget
+World veriyi saklar; UI bütün arayüz düzenidir. Panel widgetları gruplar.
+Widget, World verisini gösteren tek bir sayaç, bar, metin veya karakter kartıdır.
+Widgetı kaldırmak bağlandığı veriyi silmez. Global göstergeler Global düğmesinde,
+page göstergeleri kendi sayfasında görünür. Bar ve meter sayısal veri ister.
+
+2. Karakter, stat ve global değişken
+player entity, ilk 3.0 işleminden önce Runtime tarafından otomatik oluşturulur.
+Stat tanımı tek başına karakter değeri değildir: önce link ile karaktere bağla.
+Yeni link default ile başlar; tekrar link etmek eski değeri sıfırlamaz.
+Variable ise globaldir ve link gerektirmez.
+
+```vhtml
+<vhtml version="3.0">
+  <add type="entity" id="alex" name="Alex" tags="human,npc" />
+  <add type="stat" id="health" name="Can" default="100" />
+  <configure id="health" auto-link="true" />
+  <add type="variable" id="gold" name="Altın" norm="integer" default="100" />
+  <add type="variable" id="night" norm="boolean" default="false" />
+  <add type="variable" id="dice" norm="integer" default="0" />
+</vhtml>
+```
+
+auto-link mevcut ve gelecekteki entity'leri kapsar. link="all" yalnız mevcutları
+kapsar. unlink bir karakterin stat örneğini kaldırır; stat tanımını silmez.
+Stat norm=integer, varsayılan sınırlar 0..100, default=10. Variable norm=string
+varsayılandır; integer, decimal, boolean ve percentage (%) de kullanılabilir.
+
+```vhtml
+<modify id="health" entity="player" value="-5" />
+<modify id="gold" value="+10" />
+<configure id="health" link="alex" value="75" />
+<configure id="gold" ai-access="modify" />
+```
+
+Stat modify içinde entity yoksa yalnız global DEFAULT değişir; karakterler değişmez.
+Negatif bir değeri atamak için op="set" gerekir. op yokken -5 çıkarma anlamına gelir.
+Diğer op'lar add/sub/mul/div. Sıfıra bölme ve integer'da kesirli sonuç hatadır.
+Sayısal sınırlar clamp edilir; yanlış veri türü sessizce dönüştürülmez.
+
+3. Göstergeler
+```vhtml
+<ui type="panel" id="character" label="Karakter" drawer="right" />
+<ui type="stat-bar" id="health" entity="player" label="Can" panel="character" />
+<ui type="counter" id="gold" label="Altın" panel="character" />
+<ui type="entity-card" id="alex" label="Alex" />
+<ui type="meter" id="health" entity="alex" scope="page" label="Alex — Can" />
+```
+Tipler: stat-bar, progress-bar, meter, counter, text, badge, entity-card, panel.
+id veri kaynağıdır. Aynı kaynaktan farklı göstergeler için widget-id kullan.
+Stat göstergelerinde entity, entity-card'da id doğrudan karakterdir.
+
+4. Seçenek ve sayfa
+add-as=0 (varsayılan) şablonu kaydeder; 1,2,3... görünür sıra verir.
+count varsayılan 1. Hak bitince pressed=remove kaldırır, stay pasifleştirir,
+transform iç içe tanımlanan yeni choice'a dönüştürür.
+Aynı group içindeki alternatifler bir seçimde kapanır; bağımsız kontrolleri
+aynı gruba koyma. Kullanım hakkı başarılı tıklamada eksilir; hata hak tüketmez.
+
+```vhtml
+<choice id="rest" label="Dinlen" add-as="1" group="decision">
+  <then>
+    <modify id="health" entity="player" value="+10" />
+    <page mode="next" />
+    <ai instruction="Dinlenmenin ardından sahneyi devam ettir." />
+  </then>
+</choice>
+<choice id="walk" label="Yola devam et" add-as="2" group="decision">
+  <then><page mode="next" /><ai instruction="Yolculuğu devam ettir." /></then>
+</choice>
+```
+
+page önce, ai sonra: yanıt yeni sayfaya gelir. Tersi sırada AI eski sayfayı
+hedefler. Sayfa gezinmesi tur ilerletmez ve seçim haklarını sıfırlamaz.
+go-to="mevcut_sayfa" var olan sayfaya gider; aynı page-id ile next hatadır.
+Şablon tekrar etkinleştirilirse count template'den tazelenir; eski hakkı aktarılmaz.
+
+5. Encounter, condition ve every
+Oyuncu mesajı ve choice tıklaması bir turdur. AI yanıtı ve editör/render tur değildir.
+Requirement false ise zar atılmaz ve check-fail çalışmaz. rule koşulları roll öncesi
+then/else çalıştırır. String ve boolean için yalnız eq/neq; sayılar için ayrıca
+gt/gte/lt/lte vardır. mode="all" ve mode="any" ile koşullar gruplanabilir.
+
+```vhtml
+<add type="encounter" id="ambush" base-chance="10" trigger="turn" />
+<configure id="ambush">
+  <condition id="night" role="requirement" value="true" />
+  <condition id="gold" op="gt" value="100">
+    <then every="1:4"><modify id="ambush" value="+10" /></then>
+  </condition>
+  <check-success><ai instruction="Beklenmedik bir karşılaşma anlat." /></check-success>
+</configure>
+```
+
+every="1:4" son dört turda en fazla bir çalıştırmadır; sabit dört turluk dilimler
+değildir. 1:0 oyun boyunca bir kezdir. Her blok ayrı ve kayıtla saklanan sayaç taşır.
+Zarlar seed/counter ile Runtime'da üretilir; AI kendisi zar sonucu uydurup uygulayamaz.
+History'de roll/chance ve geri alınan hatalı bloklar görülebilir.
+
+6. Mechanic ve aralıklar
+on-change aynı aralık içindeki her değişimde tekrar çalışmaz; aralığa girişte çalışır.
+on-turn her oyuncu turunda değerlendirir. Modify kalıcıdır, geçici buff değildir.
+
+```vhtml
+<add type="mechanic" id="danger" source="health" entity="player" />
+<configure id="danger">
+  <section range="[0,20)" every="1:4"><ai instruction="Karakterin yaralarının ağırlığını sahneye yansıt." /></section>
+</configure>
+```
+
+7. Desteklenen uzantılar ve sınır
+ui, check, remove, random, modify.value-ref ve rule-id uygulanmıştır.
+value-ref="alex.health" veya "var.gold"; value ile birlikte kullanılamaz.
+check yalnız trigger="manual" encounter kabul eder. random önceden tanımlı sayısal
+variable'a yazar. remove kullanıcı işlemi ve silme onayı gerektirir.
+effect, trigger abonelikleri, input ve section on-enter/on-exit bu sürümde desteklenmez;
+sessizce yok sayılmaz, açık hata verir. Bunlar teknik şartnamede önerilen uzantılardır.
+
+8. Onay, gizlilik, geri alma ve kayıt
+ai-access none/read/modify; varsayılan read. AI kendi yetkisini yükseltemez.
+description-noai model bağlamına gitmez. Sadece izinli karakter bağları dahil edilir.
+Kullanıcı komutları ile AI önerileri ayrı yetkiyle değerlendirilir.
+Bir eylem hata verirse yarım uygulanmaz; bağımsız kural blokları ayrı geri alınır.
+Olay zinciri 1000 adımla sınırlıdır; kendini tetikleyen döngü kontrollü hata verir.
+Undo/Redo değerleri, bağları, sayaçları, sayfaları ve RNG durumunu geri alır;
+AI isteğini tekrar göndermeden geçmişte gezinir.
+Bir eylemde farklı sayfalara en fazla 8 AI hedef isteği sırayla işlenir.
+Stop veya hata kalan istekleri durdurur. Aynı ardışık hedefin talimatları birleştirilir.
+
+Tam yedek: Save / Load → Export checkpoint veya My stories → Export.
+XML export tanımlar içindir; eski sayfalar, geçmiş, kullanım hakları ve legacy veriler
+için JSON checkpoint kullan. Kaynak exportu tam save-state değildir.
+Eski V-HTML iki nokta sözdizimi eski kayıt ve işlemler için hâlâ okunabilir;
+yeni prompt, snippet ve varsayılan tamamlama 3.0 XML kullanır.

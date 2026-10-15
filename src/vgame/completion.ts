@@ -1,8 +1,10 @@
 import type { GameProject } from "./types";
 import { VHTML_FIELDS, VHTML_KINDS, VHTML_COMMANDS } from "./runtime";
 import { completionHelp } from "./completionHelp";
+import { xmlCompletions } from "./completion3";
 
 export interface VHTMLCompletion {
+  cursorOffset?: number;
   label: string;
   insert: string;
   from: number;
@@ -54,6 +56,17 @@ for (const field of [
 
 /** Completion is a lexical aid only. Execution still goes through the real parser. */
 export function vhtmlCompletions(
+  text: string,
+  cursor: number,
+  game?: GameProject,
+): VHTMLCompletion[] {
+  cursor = Math.max(0, Math.min(cursor, text.length));
+  return (
+    xmlCompletions(text, cursor, game) ??
+    legacyVHTMLCompletions(text, cursor, game)
+  );
+}
+export function legacyVHTMLCompletions(
   text: string,
   cursor: number,
   game?: GameProject,

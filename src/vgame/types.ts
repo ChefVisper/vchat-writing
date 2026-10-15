@@ -20,6 +20,19 @@ export interface GameSection {
   result: VCommand[];
 }
 export interface GameObject {
+  v3?: {
+    active: boolean;
+    tags: string[];
+    autoLink: boolean;
+    trigger: string;
+    enabled: boolean;
+    resetOnSuccess: boolean;
+    source: string;
+    entity: string;
+    runOnInit: boolean;
+    rules: VCommand[];
+    sections: number[];
+  };
   id: string;
   name: string;
   kind: string;
@@ -56,10 +69,18 @@ export interface GameObject {
   conditionMode?: "all" | "any";
 }
 export interface GameWidget {
+  entity?: string;
   id: string;
   label: string;
   binding: string;
-  style: "counter" | "progress-bar" | "text" | "badge";
+  style:
+    | "counter"
+    | "progress-bar"
+    | "text"
+    | "badge"
+    | "stat-bar"
+    | "meter"
+    | "entity-card";
   ui: GameScope;
   panel?: string;
   pageId?: string;
@@ -83,6 +104,12 @@ export interface GamePanel {
   owner: "user" | "ai";
 }
 export interface GameOption {
+  v3?: {
+    templateId: string;
+    remaining: number;
+    pressed: "remove" | "stay" | "transform";
+    transform?: VCommand;
+  };
   id: string;
   name: string;
   description: string;
@@ -167,6 +194,12 @@ export interface GameProposal {
   changes: GameChange[];
 }
 export interface GameProject {
+  vhtml3?: {
+    version: "3.0";
+    bindings: Record<string, Record<string, number>>;
+    templates: Record<string, VCommand>;
+    usage: Record<string, number[]>;
+  };
   version: 1;
   id: string;
   pages: GamePage[];
@@ -190,11 +223,13 @@ export interface GameProject {
   actionLock?: { optionId: string; requestId: string };
 }
 export interface GameGeneration {
+  pageId?: string;
   id: string;
   instruction: string;
   mode: "continue" | "react" | "describe";
 }
 export interface GameExecution {
+  generations?: GameGeneration[];
   requiresConfirmation?: boolean;
   project: GameProject;
   generation?: GameGeneration;

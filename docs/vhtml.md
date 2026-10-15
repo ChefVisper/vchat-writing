@@ -1,4 +1,6 @@
-# V-HTML 1: Vgame language and compatibility contract
+# Legacy V-HTML 1 compatibility reference
+
+New code uses [V-HTML 3.0 XML](vhtml-3.md). This document describes the retained colon syntax for older projects.
 
 Vgame is an optional page-based layer inside vChat. Existing Story projects remain continuous co-writing documents. V-HTML is a declarative data language, not browser HTML: it cannot run scripts, stylesheets, DOM commands, network calls, or filesystem operations. The runtime is the authority for which parsed commands may execute.
 

@@ -1,4 +1,5 @@
 import { uid } from "../types";
+import { validV3State } from "./v3";
 import type { GameChange, GameExecutionOptions, GameProject } from "./types";
 
 export function createGameProject(text = ""): GameProject {
@@ -56,6 +57,7 @@ export function createGameProject(text = ""): GameProject {
 }
 const forbidden = new Set(["__proto__", "prototype", "constructor"]);
 const historyRoots = new Set([
+  "vhtml3",
   "pages",
   "activePageId",
   "navigation",
@@ -369,6 +371,7 @@ export function validateGameProject(value: unknown): value is GameProject {
     return Array.isArray(v) && v.length <= 500 && v.every((c) => walk(c, 0));
   };
   try {
+    if (!validV3State(p)) return false;
     if (
       p.version !== 1 ||
       !id(p.id) ||
@@ -482,12 +485,21 @@ export function validateGameProject(value: unknown): value is GameProject {
         (w) =>
           p.objects.some((o) => o.id === w.binding) &&
           ["global", "page", "event"].includes(w.ui) &&
-          ["counter", "progress-bar", "text", "badge"].includes(w.style) &&
+          [
+            "counter",
+            "progress-bar",
+            "text",
+            "badge",
+            "stat-bar",
+            "meter",
+            "entity-card",
+          ].includes(w.style) &&
           ["page-top", "page-bottom", "inline"].includes(w.position) &&
           ["never", "page-exit", "event-end"].includes(w.removeOn) &&
           typeof w.visible === "boolean" &&
           owner(w.owner) &&
           string(w.label, 500) &&
+          (w.entity === undefined || string(w.entity, 500)) &&
           finite(w.createdTurn) &&
           w.createdTurn >= 0 &&
           scoped(w) &&

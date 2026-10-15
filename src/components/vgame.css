@@ -257,6 +257,50 @@
 .vgame-input-editor textarea {
   width: 100%;
 }
+.vgame-widget meter {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.vgame-choice-count {
+  color: var(--muted);
+  font-size: 10px;
+  margin-left: 6px;
+}
+.vgame-widget-text .vgame-widget-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.vgame-widget-badge .vgame-widget-value {
+  border: 1px solid var(--border);
+  background: var(--accent-bg);
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 12px;
+  width: fit-content;
+}
+.vgame-widget-entity-card {
+  border-left: 3px solid var(--accent);
+}
+.vgame-stat-list {
+  margin: 7px 0;
+  font-size: 12px;
+}
+.vgame-stat-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+.vgame-stat-list dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.vgame-v3-world {
+  display: grid;
+  gap: 7px;
+}
 .vgame-guide {
   margin-top: 12px;
 }

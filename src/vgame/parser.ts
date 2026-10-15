@@ -1,4 +1,5 @@
-/** V-HTML 1 grammar. Parsing is data-only; the runtime owns the command allowlist. */
+import { parseXML, printXML, looksLikeXML } from "./xml";
+/** Legacy grammar plus strict V-HTML 3.0 XML. Parsing never executes commands. */
 export interface VSpan {
   start: number;
   end: number;
@@ -13,6 +14,9 @@ export interface VRange {
 }
 export type VValue = string | number | boolean | VCommand | VRange;
 export interface VCommand {
+  syntax?: "xml";
+  authoredBy?: "user" | "ai";
+  blockId?: string;
   name: string;
   fields: Record<string, VValue[]>;
   positional: VValue[];
@@ -486,6 +490,8 @@ class Parser {
 }
 
 export function parseVHTML(source: string): VCommand[] {
+  if (typeof source === "string" && looksLikeXML(source))
+    return parseXML(source);
   if (typeof source !== "string")
     throw new VHTMLError([
       {
@@ -508,6 +514,10 @@ export function parseVHTML(source: string): VCommand[] {
 
 /** Canonical serializer: preserves all AST values/unknown fields, not whitespace/comments. */
 export function printVHTML(commands: VCommand[]): string {
+  if (commands.some((c) => c.syntax === "xml"))
+    return commands
+      .map((c) => (c.syntax === "xml" ? printXML([c]) : printVHTML([c])))
+      .join("\n");
   let count = 0;
   let values = 0;
   let textLength = 0;

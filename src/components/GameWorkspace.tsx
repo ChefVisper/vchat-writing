@@ -28,7 +28,7 @@ import { ManuscriptEditor, type ManuscriptHandle } from "./ManuscriptEditor";
 import { ThinkingPanel } from "./ThinkingPanel";
 import { VHTMLComposer, VHTMLSuggestions } from "./VHTMLComposer";
 import { vhtmlCompletions, type VHTMLCompletion } from "../vgame/completion";
-import guide from "../../docs/vhtml-guide-tr.txt?raw";
+import guide from "../../docs/vhtml-3-guide-tr.txt?raw";
 import type {
   GameChange,
   GameGeneration,
@@ -37,6 +37,10 @@ import type {
 } from "../vgame/types";
 import { useStore } from "../store";
 import { gameDiff, commitGame } from "../vgame/state";
+import { aiDirective } from "../vgame/input";
+import { v3Turn, v3Value, triggerV3Mechanic } from "../vgame/v3";
+import { escapeXML, children } from "../vgame/xml";
+import { WorldV3Editor } from "./WorldV3Editor";
 import {
   parseVHTML,
   printVHTML,
@@ -423,7 +427,9 @@ function VHTMLInput({
     if (!editor || editor.state.readOnly) return;
     editor.dispatch({
       changes: { from: item.from, to: item.to, insert: item.insert },
-      selection: { anchor: item.from + item.insert.length },
+      selection: {
+        anchor: item.from + (item.cursorOffset ?? item.insert.length),
+      },
     });
     editor.focus();
   };
@@ -615,7 +621,17 @@ function VHTMLInput({
 function Widget({ widget, game }: { widget: GameWidget; game: GameProject }) {
   const object = game.objects.find((item) => item.id === widget.binding);
   if (!object) return null;
-  const progress = typeof object.value === "number" ? object.value : undefined;
+  let value = object.value;
+  try {
+    if (widget.entity) value = v3Value(game, object.id, widget.entity);
+  } catch {
+    return (
+      <p className="vgame-meta">
+        {widget.label}: link this character stat first.
+      </p>
+    );
+  }
+  const progress = typeof value === "number" ? value : undefined;
   const min = object.min ?? 0,
     max = object.max ?? 100;
   return (
@@ -624,12 +640,41 @@ function Widget({ widget, game }: { widget: GameWidget; game: GameProject }) {
       data-widget-id={widget.id}
     >
       <div className="vgame-widget-name">{widget.label || object.name}</div>
-      <div className="vgame-widget-value">{displayValue(object.value)}</div>
-      {widget.style === "progress-bar" && progress !== undefined && (
-        <progress
+      {widget.style === "entity-card" ? (
+        <>
+          <p className="vgame-meta">{object.v3?.tags.join(" · ")}</p>
+          <dl className="vgame-stat-list">
+            {game.objects
+              .filter(
+                (s) =>
+                  s.kind === "stat" &&
+                  game.vhtml3?.bindings[s.id]?.[object.id] !== undefined,
+              )
+              .map((s) => (
+                <div key={s.id}>
+                  <dt>{s.name}</dt>
+                  <dd>{String(v3Value(game, s.id, object.id))}</dd>
+                </div>
+              ))}
+          </dl>
+        </>
+      ) : (
+        <div className="vgame-widget-value">{displayValue(value)}</div>
+      )}
+      {["progress-bar", "stat-bar"].includes(widget.style) &&
+        progress !== undefined && (
+          <progress
+            aria-label={widget.label || object.name}
+            value={progress - min}
+            max={Math.max(1, max - min)}
+          />
+        )}
+      {widget.style === "meter" && progress !== undefined && (
+        <meter
           aria-label={widget.label || object.name}
-          value={progress - min}
-          max={Math.max(1, max - min)}
+          min={min}
+          max={Math.max(min + 1, max)}
+          value={progress}
         />
       )}
     </div>
@@ -703,11 +748,13 @@ function WorldEditor({
           onChange={(event) => setSelected(event.target.value)}
         >
           <option value="">New object</option>
-          {game.objects.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name} · {item.kind}
-            </option>
-          ))}
+          {game.objects
+            .filter((item) => !item.v3)
+            .map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} · {item.kind}
+              </option>
+            ))}
         </select>
       </Field>
       <div className="vgame-form-grid">
@@ -961,6 +1008,7 @@ function UIEditor({
     id: "",
     label: "",
     binding: "",
+    entity: "player",
     style: "counter",
     ui: "global",
     eventId: "",
@@ -976,6 +1024,7 @@ function UIEditor({
       ? {
           ...blank,
           ...widget,
+          entity: widget.entity ?? "player",
           eventId: widget.eventId ?? "",
           panel: widget.panel ?? "",
           expiresAfter:
@@ -1074,7 +1123,15 @@ function UIEditor({
             value={form.style}
             onChange={(e) => field("style", e.target.value)}
           >
-            {["counter", "progress-bar", "text", "badge"].map((value) => (
+            {[
+              "counter",
+              "progress-bar",
+              "stat-bar",
+              "meter",
+              "text",
+              "badge",
+              "entity-card",
+            ].map((value) => (
               <option key={value}>{value}</option>
             ))}
           </select>
@@ -1086,10 +1143,32 @@ function UIEditor({
             onChange={(e) => field("ui", e.target.value)}
           >
             {["global", "page", "event"].map((value) => (
-              <option key={value}>{value}</option>
+              <option key={value} disabled={!!bound?.v3 && value === "event"}>
+                {value}
+              </option>
             ))}
           </select>
         </Field>
+        {bound?.kind === "stat" && bound.v3 && (
+          <Field label="Widget character">
+            <select
+              disabled={busy}
+              value={form.entity}
+              onChange={(e) => field("entity", e.target.value)}
+            >
+              {game.objects
+                .filter((o) => o.kind === "entity")
+                .map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                    {game.vhtml3?.bindings[bound.id]?.[e.id] === undefined
+                      ? " (not linked)"
+                      : ""}
+                  </option>
+                ))}
+            </select>
+          </Field>
+        )}
         <Field label="Widget position">
           <select
             disabled={busy}
@@ -1170,7 +1249,9 @@ function UIEditor({
             const id = widget?.id || form.id.trim() || uid();
             if (
               execute(
-                `<display: id: ${quote(id)} label: ${quote(form.label)} ${bound.kind}: ${quote(bound.id)} style: ${form.style} ui: ${form.ui} position: ${form.position} ${form.ui === "page" ? `page: ${quote(game.activePageId)}` : ""} ${form.ui === "event" ? `event: ${quote(form.eventId)}` : ""} ${form.panel ? `panel: ${quote(form.panel)}` : ""} remove-on: ${form.removeOn} ${form.expiresAfter ? `expires-after: ${form.expiresAfter}` : ""}>\n<${form.visible ? "show" : "hide"}: ui: ${quote(id)}>`,
+                bound.v3
+                  ? `<ui type="${form.style}" id="${escapeXML(bound.id)}" widget-id="${escapeXML(id)}" label="${escapeXML(form.label)}" scope="${form.ui}" position="${form.position}" visible="${form.visible}"${bound.kind === "stat" ? ` entity="${escapeXML(form.entity)}"` : ""}${form.panel ? ` panel="${escapeXML(form.panel)}"` : ""}/>`
+                  : `<display: id: ${quote(id)} label: ${quote(form.label)} ${bound.kind}: ${quote(bound.id)} style: ${form.style} ui: ${form.ui} position: ${form.position} ${form.ui === "page" ? `page: ${quote(game.activePageId)}` : ""} ${form.ui === "event" ? `event: ${quote(form.eventId)}` : ""} ${form.panel ? `panel: ${quote(form.panel)}` : ""} remove-on: ${form.removeOn} ${form.expiresAfter ? `expires-after: ${form.expiresAfter}` : ""}>\n<${form.visible ? "show" : "hide"}: ui: ${quote(id)}>`,
                 "Save UI widget",
                 true,
               )
@@ -1385,20 +1466,37 @@ function OptionEditor({
     order: "1",
     group: "",
     once: true,
-    source: "<page: append>\n<ai>",
+    count: "1",
+    pressed: "remove",
+    transform: "",
+    source: '<page mode="next" />\n<ai />',
   };
   const option = game.options.find((item) => item.id === selected);
   const formState = useCanonicalDraft(
     option
       ? {
+          ...empty,
           ...option,
+          id: option.v3?.templateId ?? option.id,
+          count: String(option.v3?.remaining ?? 1),
+          pressed: option.v3?.pressed ?? "remove",
+          transform: option.v3?.transform
+            ? printVHTML([option.v3.transform])
+            : "",
           order: String(option.order),
-          source: printVHTML(option.result),
+          source: printVHTML(
+            option.v3
+              ? option.result.flatMap((c) =>
+                  c.name === "then" ? children(c) : [c],
+                )
+              : option.result,
+          ),
         }
       : empty,
     `${game.id}:${game.activePageId}:${selected}`,
   );
   const { draft: form, setDraft: setForm } = formState;
+  const xmlChoice = !option || !!option.v3;
   return (
     <details className="vgame-card" open>
       <summary>Page choices</summary>
@@ -1437,13 +1535,15 @@ function OptionEditor({
           onChange={(e) => setForm({ ...form, name: e.target.value })}
         />
       </Field>
-      <Field label="Choice description">
-        <input
-          disabled={busy}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-        />
-      </Field>
+      {!xmlChoice && (
+        <Field label="Choice description">
+          <input
+            disabled={busy}
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+        </Field>
+      )}
       <div className="vgame-form-grid">
         <Field label="Choice order">
           <input
@@ -1461,12 +1561,52 @@ function OptionEditor({
           />
         </Field>
       </div>
-      <Toggle
-        label="Use choice once"
-        disabled={busy}
-        value={form.once}
-        onChange={(once) => setForm({ ...form, once })}
-      />
+      {xmlChoice ? (
+        <>
+          <Field label="Choice uses">
+            <input
+              disabled={busy}
+              type="number"
+              min="1"
+              max="10000"
+              value={form.count}
+              onChange={(e) => setForm({ ...form, count: e.target.value })}
+            />
+          </Field>
+          <Field label="When choice is exhausted">
+            <select
+              disabled={busy}
+              value={form.pressed}
+              onChange={(e) => setForm({ ...form, pressed: e.target.value })}
+            >
+              <option value="remove">Remove</option>
+              <option value="stay">Stay disabled</option>
+              <option value="transform">Transform</option>
+            </select>
+          </Field>
+          {form.pressed === "transform" && (
+            <Field label="Choice transform XML">
+              <textarea
+                disabled={busy}
+                value={form.transform}
+                onChange={(e) =>
+                  setForm({ ...form, transform: e.target.value })
+                }
+                placeholder={
+                  '<transform id="new_choice" label="Next" add-as="1"><then><ai /></then></transform>'
+                }
+              />
+            </Field>
+          )}
+        </>
+      ) : (
+        <Toggle
+          label="Use choice once"
+          disabled={busy}
+          value={form.once}
+          onChange={(once) => setForm({ ...form, once })}
+        />
+      )}
       <Field label="Choice action V-HTML">
         <textarea
           disabled={busy}
@@ -1478,16 +1618,20 @@ function OptionEditor({
         <button
           disabled={busy || formState.stale || !form.name.trim()}
           onClick={() => {
-            const id = selected || form.id.trim() || uid();
+            const id =
+              option?.v3?.templateId ??
+              (selected || form.id.trim() || `choice_${uid()}`);
             if (
               execute(
-                `<option: id: ${quote(id)} name: ${quote(form.name)} description: ${quote(form.description)} add-as: ${form.order} group: ${quote(form.group)} once: ${form.once} page: ${quote(game.activePageId)} result: ${form.source}>`,
+                xmlChoice
+                  ? `<choice id="${escapeXML(id)}" label="${escapeXML(form.name)}" add-as="${form.order}" count="${form.count}" pressed="${form.pressed}" group="${escapeXML(form.group)}"><then>${form.source}</then>${form.pressed === "transform" ? form.transform : ""}</choice>`
+                  : `<option: id: ${quote(id)} name: ${quote(form.name)} description: ${quote(form.description)} add-as: ${form.order} group: ${quote(form.group)} once: ${form.once} page: ${quote(game.activePageId)} result: ${form.source}>`,
                 "Save page choice",
                 true,
               )
             ) {
               formState.saved();
-              setSelected(id);
+              setSelected(xmlChoice ? `${id}.${game.activePageId}` : id);
             }
           }}
         >
@@ -1497,7 +1641,12 @@ function OptionEditor({
           <button
             disabled={busy}
             onClick={() =>
-              execute(`<remove: option: ${quote(selected)}>`, "Remove choice")
+              execute(
+                option?.v3
+                  ? `<remove type="choice" id="${escapeXML(option.v3.templateId)}"/>`
+                  : `<remove: option: ${quote(selected)}>`,
+                "Remove choice",
+              )
             }
           >
             Remove choice
@@ -1505,9 +1654,10 @@ function OptionEditor({
         )}
       </div>
       <p className="help">
-        Page commands change the destination. Only an explicit &lt;ai&gt; calls
-        the model; several AI commands in one action become one request.
-        Conditions are available in the source editor.
+        Page commands choose the destination before &lt;ai /&gt;. V3 edits
+        reactivate this page's choice instance; its original template stays
+        registered. Counts and transform control what happens after the last
+        use.
       </p>
     </details>
   );
@@ -1605,6 +1755,12 @@ function ProposalCard({
 function isDestructive(changes: GameChange[]) {
   return changes.some(
     (change) =>
+      !(change.path[0] === "vhtml3" && change.path[1] === "usage") &&
+      !(
+        change.path[0] === "objects" &&
+        change.path.includes("v3") &&
+        change.path.includes("sections")
+      ) &&
       ![
         "navigation",
         "activePageId",
@@ -1835,7 +1991,8 @@ export function GameWorkspace({
   const requestGeneration = async (
     project: GameProject,
     action?: Partial<GameGeneration>,
-  ) => {
+    remaining: GameGeneration[] = [],
+  ): Promise<void> => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -1849,6 +2006,7 @@ export function GameWorkspace({
     controller.current = c;
     nativeAbort.current = Promise.resolve();
     let reasoning = "";
+    let completed = false;
     try {
       const nextPage =
         !action?.id &&
@@ -1857,7 +2015,9 @@ export function GameWorkspace({
       const generationProject = nextPage
         ? executeVHTML(project, "<page: next>", { recordHistory: false })
             .project
-        : project;
+        : action?.pageId
+          ? { ...project, activePageId: action.pageId }
+          : project;
       const result = await generateGame(
         generationProject,
         startStory,
@@ -1873,6 +2033,8 @@ export function GameWorkspace({
         },
       );
       if (c.signal.aborted) return;
+      if (action?.pageId && result.project.activePageId === action.pageId)
+        result.project.activePageId = project.activePageId;
       if (
         !alive.current ||
         latest.current.story.id !== startStory.id ||
@@ -1905,12 +2067,27 @@ export function GameWorkspace({
             .map((q) => q.id);
       }
       save(finishGameAction(result.project));
+      completed = true;
       setInput("");
       setNotice(
-        result.project.proposals.filter((item) => item.status === "pending")
-          .length
-          ? "Prose added. Proposed changes are in Inbox."
-          : "Prose added.",
+        result.project.proposals.some(
+          (item) =>
+            item.status === "failed" &&
+            !project.proposals.some((old) => old.id === item.id),
+        )
+          ? "AI response received. Invalid proposals are marked failed in Inbox; review them for details."
+          : result.project.proposals.filter((item) => item.status === "pending")
+                .length
+            ? "AI response received. Proposed changes are in Inbox."
+            : result.narrative.trim()
+              ? "Prose added."
+              : result.project.proposals.some(
+                    (item) =>
+                      item.status === "approved" &&
+                      !project.proposals.some((old) => old.id === item.id),
+                  )
+                ? "AI changes applied."
+                : "AI response received; no prose or pending changes.",
       );
       requestAnimationFrame(() => editor.current?.scrollToEnd());
     } catch (caught) {
@@ -1943,6 +2120,18 @@ export function GameWorkspace({
       busyRef.current = false;
       controller.current = null;
     }
+    if (
+      completed &&
+      !c.signal.aborted &&
+      alive.current &&
+      latest.current.story.id === startStory.id &&
+      remaining.length
+    )
+      await requestGeneration(
+        latest.current.game,
+        remaining[0],
+        remaining.slice(1),
+      );
   };
   const stop = () => {
     controller.current?.abort();
@@ -1952,11 +2141,16 @@ export function GameWorkspace({
         .abort?.(s.connection, keys[credentialId(s.connection)] || "")
         .catch(() => {}) ?? Promise.resolve();
   };
-  const commit = (next: GameProject, generation?: GameGeneration) => {
+  const commit = (
+    next: GameProject,
+    generation?: GameGeneration,
+    generations?: GameGeneration[],
+  ) => {
     save(next);
     setPreview(null);
     setError("");
-    if (generation) void requestGeneration(next, generation);
+    if (generation)
+      void requestGeneration(next, generation, generations?.slice(1));
   };
   const execute: Execute = (
     script,
@@ -1977,7 +2171,7 @@ export function GameWorkspace({
           setError("The game changed. Preview this action again.");
           return;
         }
-        commit(result.project, result.generation);
+        commit(result.project, result.generation, result.generations);
         setNotice(result.warnings.join(" ") || label);
       };
       if (result.requiresConfirmation || isDestructive(result.diff)) {
@@ -1998,17 +2192,43 @@ export function GameWorkspace({
     );
   const sendInput = (value: string, clear: (value: string) => void) => {
     if (busyRef.current || !value.trim()) return;
+    try {
+      const instruction = aiDirective(value);
+      if (instruction !== undefined) {
+        void requestGeneration(latest.current.game, {
+          id: uid(),
+          instruction,
+          mode: "react",
+          pageId: latest.current.game.activePageId,
+        });
+        return;
+      }
+    } catch (caught) {
+      fail(caught);
+      return;
+    }
     if (value.trimStart().startsWith("<")) {
       if (execute(value, "Send V-HTML")) clear("");
       return;
     }
     try {
-      commit(
-        appendGameText(latest.current.game, value, {
-          origin: "user",
-          label: "Send author text",
-        }).project,
-      );
+      const base = latest.current.game;
+      let next = appendGameText(base, value, {
+        origin: "user",
+        label: "Send author text",
+      }).project;
+      let generation: GameGeneration | undefined;
+      let generations: GameGeneration[] | undefined;
+      if (base.vhtml3) {
+        const result = v3Turn(next);
+        next = result.project;
+        generation = result.generation;
+        generations = result.generations;
+        next.history = base.history;
+        next.future = base.future;
+        commitGame(base, next, { label: "Send player turn" });
+      }
+      commit(next, generation, generations);
       clear("");
       requestAnimationFrame(() => editor.current?.scrollToEnd());
     } catch (caught) {
@@ -2034,7 +2254,7 @@ export function GameWorkspace({
           setError("The game changed. Advance it again.");
           return;
         }
-        commit(result.project, result.generation);
+        commit(result.project, result.generation, result.generations);
         setNotice(
           minutes ? `Advanced ${minutes} minutes.` : "Advanced one turn.",
         );
@@ -2087,8 +2307,22 @@ export function GameWorkspace({
   const clickOption = (id: string) => {
     if (busyRef.current) return;
     try {
-      const result = executeOption(latest.current.game, id);
-      commit(result.project, result.generation);
+      const base = latest.current.game,
+        result = executeOption(base, id);
+      const apply = () => {
+        if (latest.current.game !== base) {
+          setError("The game changed. Select the option again.");
+          return;
+        }
+        commit(result.project, result.generation, result.generations);
+      };
+      if (result.requiresConfirmation || isDestructive(result.diff))
+        setConfirmation({
+          label: "Confirm choice changes",
+          diff: result.diff,
+          run: apply,
+        });
+      else apply();
     } catch (caught) {
       fail(caught);
     }
@@ -2105,7 +2339,7 @@ export function GameWorkspace({
           setError("The game changed. Review this proposal again.");
           return;
         }
-        commit(next, result.generation);
+        commit(next, result.generation, result.generations);
         setNotice("Proposal approved and applied.");
       };
       if (result.requiresConfirmation || isDestructive(diff))
@@ -2187,15 +2421,17 @@ export function GameWorkspace({
     providerSignature,
   ]);
   const snippets = {
-    Stat: '<add: stat: name: "Money" id: "money">\n<define: stat: "money" type: number default: 0 ai-access: modify>',
-    Option:
-      '<option: id: "ask" name: "Ask a question" once: true result: <page: append> <ai: instruction: "Respond to the question.">>',
-    "Global widget":
-      '<display: id: "money-ui" stat: "money" style: counter ui: global label: "Money">',
-    "Event widget":
-      '<display: id: "suspicion-ui" mechanic: "suspicion" style: progress-bar ui: event event: "pursuit" remove-on: event-end position: page-top>',
-    Instruction:
-      '<ai-instruct: id: "style" scope: global content: "Continue the scene without recaps.">',
+    "Stat + binding":
+      '<add type="stat" id="health" default="100" />\n<configure id="health" link="player" />',
+    Variable: '<add type="variable" id="gold" norm="integer" default="100" />',
+    Choice:
+      '<choice id="ask" label="Ask a question" add-as="1" group="decision">\n  <then><page mode="next" /><ai instruction="Respond to the question." /></then>\n</choice>',
+    "Stat bar":
+      '<ui type="stat-bar" id="health" entity="player" scope="global" label="Health" />',
+    "Character card":
+      '<ui type="entity-card" id="player" scope="global" label="Player" />',
+    Encounter:
+      '<add type="encounter" id="ambush" base-chance="10" trigger="turn" />\n<configure id="ambush"><check-success><ai instruction="Describe an unexpected encounter." /></check-success></configure>',
   };
   return (
     <div className="vgame-workspace">
@@ -2353,10 +2589,19 @@ export function GameWorkspace({
                   className="vgame-choice"
                   key={option.id}
                   disabled={busy || !optionEnabled(game, option)}
-                  title={option.description}
+                  title={
+                    option.v3
+                      ? `${option.v3.remaining} uses remaining · ${option.v3.pressed}`
+                      : option.description
+                  }
                   onClick={() => clickOption(option.id)}
                 >
                   {option.name}
+                  {option.v3 && option.v3.remaining > 1 && (
+                    <small className="vgame-choice-count">
+                      ×{option.v3.remaining}
+                    </small>
+                  )}
                 </button>
               ))}
           </div>
@@ -2374,7 +2619,7 @@ export function GameWorkspace({
             <VHTMLComposer
               game={game}
               label="Freeform game input"
-              placeholder="Send text, or start with < for V-HTML…"
+              placeholder={'Send text, V-HTML, or /ai "instruction"…'}
               disabled={busy}
               value={input}
               onChange={setInput}
@@ -2520,7 +2765,42 @@ export function GameWorkspace({
                 )}
                 {tab === "World" && (
                   <>
-                    <WorldEditor game={game} execute={execute} busy={busy} />
+                    <WorldV3Editor
+                      game={game}
+                      execute={execute}
+                      busy={busy}
+                      runMechanic={(id) => {
+                        if (busyRef.current) return;
+                        try {
+                          const base = latest.current.game,
+                            result = triggerV3Mechanic(base, id);
+                          const apply = () => {
+                            if (latest.current.game !== base) return;
+                            commit(
+                              result.project,
+                              result.generation,
+                              result.generations,
+                            );
+                          };
+                          if (
+                            result.requiresConfirmation ||
+                            isDestructive(result.diff)
+                          )
+                            setConfirmation({
+                              label: "Run manual mechanic",
+                              diff: result.diff,
+                              run: apply,
+                            });
+                          else apply();
+                        } catch (caught) {
+                          fail(caught);
+                        }
+                      }}
+                    />
+                    <details className="vgame-card">
+                      <summary>Legacy World editor</summary>
+                      <WorldEditor game={game} execute={execute} busy={busy} />
+                    </details>
                     <details className="vgame-card">
                       <summary>Time & encounters</summary>
                       <p className="vgame-meta">
@@ -2873,12 +3153,12 @@ export function GameWorkspace({
                       </div>
                     )}
                     <p className="help">
-                      Definition mode updates matching IDs and keeps omitted
-                      definitions. Use an explicit remove command to delete.
-                      Archived page prose stays in Pages and full JSON
-                      checkpoints; canonical source includes only the current
-                      page when compact. Unknown or unsupported commands fail
-                      with a location; no partial state is applied.
+                      V-HTML 3.0 uses XML: add creates a new ID; configure and
+                      modify update it. Definition mode applies only to legacy
+                      colon code. XML export contains V3 definitions, not a full
+                      save. Keep full JSON checkpoints for all pages, legacy
+                      data, counters and history. Unsupported commands report a
+                      source location.
                     </p>
                     <Field label="V-HTML command input">
                       <VHTMLComposer
@@ -2911,7 +3191,7 @@ export function GameWorkspace({
                       <summary>V-HTML guide &amp; examples</summary>
                       <button
                         onClick={() =>
-                          download("vhtml-guide-tr.txt", guide, "text/plain")
+                          download("vhtml-3-guide-tr.txt", guide, "text/plain")
                         }
                       >
                         Download guide

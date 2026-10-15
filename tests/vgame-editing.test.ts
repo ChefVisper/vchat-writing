@@ -12,7 +12,7 @@ import {
   optionEnabled,
   validateGameProject,
 } from "../src/vgame/runtime";
-import { vhtmlCompletions } from "../src/vgame/completion";
+import { legacyVHTMLCompletions as vhtmlCompletions } from "../src/vgame/completion";
 
 it("initializes new typed objects from their default without resetting configured values", () => {
   let p = executeVHTML(

@@ -1,4 +1,5 @@
 import { uid } from "../types";
+import { executeV3, exportV3, v3Turn, registerLegacyTurn } from "./v3";
 import {
   parseVHTML,
   printVHTML,
@@ -493,6 +494,8 @@ const condition = (p: GameProject, command: VCommand): boolean => {
           false);
 };
 export function optionEnabled(p: GameProject, option: GameOption) {
+  if (option.v3)
+    return !p.actionLock && !option.resolved && option.v3.remaining > 0;
   try {
     return (
       !p.actionLock &&
@@ -1162,7 +1165,15 @@ function run(p: GameProject, commands: VCommand[], ctx: Context) {
                 binding: o.id,
                 style: safeEnum(
                   val(command, "style"),
-                  ["counter", "progress-bar", "text", "badge"] as const,
+                  [
+                    "counter",
+                    "progress-bar",
+                    "text",
+                    "badge",
+                    "stat-bar",
+                    "meter",
+                    "entity-card",
+                  ] as const,
                   "counter",
                 ),
                 panel: has(command, "panel")
@@ -1467,6 +1478,11 @@ function transaction(
   options: GameExecutionOptions,
   ctxExtra: Partial<Context> = {},
 ): GameExecution {
+  if (commands.some((c) => c.syntax === "xml")) {
+    if (commands.some((c) => c.syntax !== "xml"))
+      throw new Error("Use one V-HTML syntax per action.");
+    return executeV3(p, commands, options);
+  }
   const next = structuredClone(p),
     ctx: Context = {
       destruction: { value: false },
@@ -1507,6 +1523,13 @@ export function executeVHTML(
 }
 export function executeOption(p: GameProject, id: string): GameExecution {
   const option = p.options.find((o) => o.id === id);
+  if (option?.v3)
+    return executeV3(
+      p,
+      [],
+      { origin: "option", label: `Choice: ${option.name}` },
+      { choice: id },
+    );
   if (!option || option.pageId !== p.activePageId || !optionEnabled(p, option))
     throw new Error("This option is unavailable or already in progress.");
   const next = structuredClone(p);
@@ -1555,8 +1578,18 @@ export function executeGameHook(
   hook: string,
   options: { minutes?: number; random?: () => number } = {},
 ): GameExecution {
+  if (p.vhtml3 && hook === "turn")
+    return v3Turn(p, options.minutes, options.random);
+  return executeLegacyHook(p, hook, options);
+}
+function executeLegacyHook(
+  p: GameProject,
+  hook: string,
+  options: { minutes?: number; random?: () => number } = {},
+  advance = true,
+): GameExecution {
   const next = structuredClone(p);
-  if (hook === "turn") next.turn++;
+  if (hook === "turn" && advance) next.turn++;
   if (options.minutes !== undefined) {
     if (!Number.isFinite(options.minutes) || options.minutes < 0)
       throw new Error("Elapsed minutes cannot be negative.");
@@ -1578,7 +1611,9 @@ export function executeGameHook(
       rule.conditions.every((c) => condition(next, c))
     )
       runDeferred(next, rule.result, ctx, rule.owner);
-  for (const encounter of next.objects.filter((o) => o.kind === "encounter")) {
+  for (const encounter of next.objects.filter(
+    (o) => o.kind === "encounter" && !o.v3,
+  )) {
     const event = next.events.find((e) => e.objectId === encounter.id)!;
     if (
       event.active ||
@@ -1656,6 +1691,10 @@ export function executeGameHook(
     warnings: ctx.warnings,
   };
 }
+
+registerLegacyTurn((p, random) =>
+  executeLegacyHook(p, "turn", { random }, false),
+);
 
 // Narrative remains plain data, including angle brackets. This API avoids
 // sending a large page through the language parser solely to quote its text.
@@ -1821,8 +1860,16 @@ export function proposeVHTML(
     throw new Error(
       "Proposal exceeds the project storage limits. Previous project was kept.",
     );
-  const routine = commands.every((c) => ["set", "modify"].includes(c.name));
+  const flat = commands.flatMap((c) =>
+    c.syntax === "xml" && c.name === "vhtml"
+      ? (c.positional as VCommand[])
+      : [c],
+  );
+  const routine = flat.every((c) => ["set", "modify"].includes(c.name));
+  const xmlStructure =
+    (!!p.vhtml3 || commands.some((c) => c.syntax === "xml")) && !routine;
   if (
+    !xmlStructure &&
     !generation &&
     !commands.some((c) => c.name === "ai") &&
     (p.settings.approval === "auto" ||
@@ -1918,6 +1965,7 @@ export function generateVHTML(
   p: GameProject,
   options: { includeAllPageText?: boolean } = {},
 ) {
+  if (p.vhtml3) return exportV3(p);
   const quote = (v: unknown) => JSON.stringify(v),
     source: string[] = [];
   source.push(

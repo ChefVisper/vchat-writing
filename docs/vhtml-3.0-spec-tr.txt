@@ -1,0 +1,1518 @@
+V-HTML 3.0 — TAM TEKNİK ŞARTNAME VE KULLANIM KILAVUZU
+Vchat için XML tabanlı AI etkileşim, interaktif hikâye ve RPG komut dili
+Dil: Türkçe | Komut/özellik adları: İngilizce
+Belge durumu: Birleştirilmiş tasarım spesifikasyonu (uygulama sözleşmesi)
+Sürüm: 3.0 | Tarih: 15 Ekim 2026
+
+==========================================================================
+0. BELGENİN AMACI, KAPSAMI VE OKUMA REHBERİ
+==========================================================================
+
+Bu belge V-HTML 3.0'ın iki taslak metnini tek bir bütün olarak birleştirir:
+- Temel dil kılavuzu: add, configure, modify, choice, ai, page, condition,
+  then, else, section, check-success, check-fail ve transform.
+- Çalışma kuralları: nesne veri modelleri, varsayılanlar, tur döngüsü, izinler,
+  encounter olasılıkları, mechanic tetikleme, kimlikler, hata yönetimi.
+- İleri genişletmeler: effect, trigger, input, check, ui, remove, random ve
+  dinamik değer referansları.
+
+Bu metin bir fikir listesinden daha ayrıntılıdır: çekirdek kuralların birbirleri
+ile tutarlı davranabilmesi için gerekli kararlar verilmiştir. Yine de bu,
+uygulamanın halihazırda bu özellikleri desteklediği iddiası değildir.
+
+STATÜLER
+  [ÇEKİRDEK]          V-HTML 3.0'ın hedeflenen temel davranışı.
+  [ÖNERİLEN UZANTI]   Tasarıma eklenmesi önerilen ama henüz çekirdek sayılmayan
+                     komut/özellik. Kod örnekleri hedeflenen sözdizimidir.
+  [UYGULAMA NOTU]     Interpreter / UI / AI orkestrasyonu için teknik karar.
+
+ÖNEMLİ ADLANDIRMA KARARLARI
+- XML benzeri konuşma içi sözdizimi V-HTML olarak adlandırılır.
+- 'Nesne' sözcüğü stat, entity, variable, encounter ve mechanic tanımlarını
+  kapsar; choice ise ayrı yaşam döngüsü olan, global kimlikli bir tanımdır.
+- Sayfalar nesne kimliğinden bağımsız page-id kullanır.
+- 'Tur' kullanıcı eylemiyle ilerleyen mantıksal oyun turudur.
+- 'Runtime' komutları yetki kontrolünden geçirerek gerçekten uygulayan katmandır.
+- Bu belgede örnek kodların çalışması için ilgili nesnelerin oluşturulmuş olması
+  gerekir; kapsamlı örneklerde bu bağımlılıklar açıkça sağlanır.
+
+==========================================================================
+1. MİMARİ: TANIM, DURUM, OLAY VE SUNUM AYRIMI [ÇEKİRDEK]
+==========================================================================
+
+V-HTML iki ana bileşene dayanır:
+  1) Interpreter: V-HTML'i ayrıştırır, doğrular, izinleri denetler ve yürütür.
+  2) Vchat Runtime: Kalıcı oyun durumunu, olayı, sayfaları ve AI bağlamını yönetir.
+
+Runtime'ın mantıksal veri alanları:
+  REGISTRY   Nesne ve choice şablon tanımları.
+  STATE      Global değişkenler, mechanic değerleri, encounter chance değerleri.
+  BINDINGS   Entity-stat bağlantıları ve bu bağlantıların güncel stat değerleri.
+  EVENTS     Değişiklik ve tur olaylarının bekleme kuyruğu.
+  PAGES      Sayfa içerikleri, aktif seçenekler ve gezinme geçmişi.
+  HISTORY    Uygulanan değişikliklerin, zarların ve işlem sonuçlarının kayıtları.
+  AI_CONTEXT  AI'a sunulmasına izin verilen filtrelenmiş bilgi.
+
+Üç temel ilke:
+  A. Definition != State: Stat tanımı ile entity üzerindeki stat örneği ayrıdır.
+  B. Deterministic Execution: Aynı başlangıç durumu ve aynı kayıtlı rastgele
+     sonuçlarla komut yürütme sırası ve nihai durum aynı olmalıdır.
+  C. AI-Assisted, Runtime-Controlled: AI komut önerebilir, fakat son kararı ve
+     uygulamayı izinleri denetleyen Runtime verir.
+
+==========================================================================
+2. SÖZDİZİMİ, XML GRAMERİ VE KİMLİKLER [ÇEKİRDEK]
+==========================================================================
+
+2.1. Tekil (self-closing) komut:
+
+<add type="stat" id="strength" />
+
+2.2. İç içe komut:
+
+<configure id="getting_robbed">
+  <condition id="vulnerability" entity="player" op="gt" value="10">
+    <then>
+      <modify id="getting_robbed" value="+10" />
+    </then>
+    <else>
+      <modify id="vulnerability" entity="player" value="+1" />
+    </else>
+  </condition>
+</configure>
+
+2.3. Bağımsız bir XML dokümanında kök element:
+
+<vhtml version="3.0">
+  <add type="variable" id="weather" norm="string" default="Sunny" />
+  <modify id="weather" value="Rainy" />
+</vhtml>
+
+Vchat sohbet metninde normal anlatım ve komut parçaları bir arada bulunabilir.
+Interpreter, ayrılmış V-HTML bloklarını tek tek XML olarak ayrıştırabilir. Birden
+fazla üst düzey komut tek XML dokümanı olarak işlenecekse <vhtml> kökü kullanılır.
+Rastgele metnin XML sanılarak çalıştırılmasına izin verilmez.
+
+2.4. Gramer kuralları
+- Özellikler açılış etiketinde yazılır: name="value".
+- Özellik değerleri çift tırnak içindedir; büyük-küçük harf duyarlıdır.
+- Her etiket mutlaka doğru biçimde kapanmalıdır.
+- <section=[...]> geçersizdir; <section range="[0,40)"> geçerlidir.
+- <then ... /> içine işlem eklenemez; içeriği olan blok </then> ile kapatılır.
+- <configure id="x" <condition ...> gibi iç içe açılış etiketleri geçersizdir.
+- XML yorumları <!-- açıklama --> biçiminde olabilir.
+- Türkçe/Unicode metin kullanımı serbesttir; dosya UTF-8 kabul edilir.
+- Boşluklar kimliklerin etrafında sessizce temizlenmez: id="alex" ile
+  id=" alex " farklı kabul edilir; ikinci biçim geçersiz sayılması önerilir.
+- Kimlikler için önerilen güvenli biçim: [A-Za-z_][A-Za-z0-9_-]*.
+  Choice id="00001" önceki tasarımla uyumluluk için ayrıca kabul edilir.
+
+2.5. XML özel karakterleri
+  &  -> &amp;
+  <  -> &lt;
+  >  -> &gt;  (özellikle özellik değerlerinde önerilir)
+  "  -> &quot;
+
+Örnek:
+<choice id="agree" label="Yes &amp; Continue" add-as="1" />
+
+2.6. ID kuralları
+- add ile oluşturulan her nesnenin 'id' değeri zorunlu, global ve benzersizdir.
+- Choice şablonları aynı global ID alanını kullanır; aynı isimle iki nesne/
+  choice oluşturulamaz.
+- Sayfalar kendi 'page-id' alanını kullanır; 'id' ile karıştırılmaz.
+- Sistem başlatıldığında 'player' kimlikli entity otomatik oluşturulur.
+- Var olan id ile yeniden <add> göndermek güncelleme DEĞİL, hata üretir.
+- Güncelleme için <configure> ve <modify> kullanılır.
+- Kimliklerin çalışma sırasında yeniden adlandırılması desteklenmez.
+
+==========================================================================
+3. KOMUTLARIN VE OPERATÖRLERİN TAM LİSTESİ [ÇEKİRDEK]
+==========================================================================
+
+TEMEL KOMUTLAR
+  <add />              Yeni nesne tanımı oluşturur.
+  <configure>           Mevcut nesnenin tanımını/çalışma kurallarını ayarlar.
+  <conf>                <configure> eşanlamlısıdır.
+  <modify />            Güncel değere doğrudan veya göreli işlem uygular.
+  <choice>              Tıklanabilir oyuncu seçeneği tanımlar/yeniden aktive eder.
+  <ai />                AI devamını talep eder.
+  <page />              Sayfa oluşturur, açar veya içerik hedefini ayarlar.
+
+ALT KOMUTLAR
+  <condition>           Koşul veya koşul grubu.
+  <then>                Doğru koşul/seçim eylemleri.
+  <else>                Yanlış koşul eylemleri.
+  <section>             Sayısal değer aralığına bağlı eylemler.
+  <check-success>       Başarılı encounter değerlendirmesinin eylemleri.
+  <check-fail>          Başarısız encounter değerlendirmesinin eylemleri.
+  <transform>           Choice kullanım sonunda dönüşeceği seçim tanımı.
+
+KARŞILAŞTIRMA OPERATÖRLERİ: <condition op="...">
+  eq   eşit (=)                      neq  eşit değil (!=)
+  gt   büyük (>)                     gte  büyük/eşit (>=)
+  lt   küçük (<)                     lte  küçük/eşit (<=)
+
+<condition>'da op belirtilmezse 'eq' kullanılır. String ve boolean verilerde
+yalnızca eq/neq kullanılır. Sayısal kıyaslarda sayı tipi doğrulanır.
+
+DEĞER DEĞİŞTİRME OPERATÖRLERİ: <modify op="...">
+  set  doğrudan değer ata            add  değer ekle
+  sub  değeri azalt                  mul  çarp
+  div  böl
+
+'condition.op' ile 'modify.op' farklı komuta ait iki ayrı operatör kümesidir.
+
+==========================================================================
+4. GLOBAL ÖZELLİKLER, VARSAYILANLAR VE TİPLER [ÇEKİRDEK]
+==========================================================================
+
+4.1. <add /> ortak özellikler
+  type              Zorunlu tür: stat/entity/variable/encounter/mechanic.
+  id                Zorunlu, benzersiz global kimlik.
+  name              Gösterilen isim; yoksa id ile aynı değer.
+  ai-access         none/read/modify; varsayılan read.
+  description-ai    AI'a görünmesine izin verilen açıklama.
+  description-noai  AI'a hiç gönderilmeyen açıklama.
+
+4.2. Varsayılanlar
+  ai-access                  read
+  stat.norm                  integer
+  stat.min                   0
+  stat.max                   100
+  stat.default               10
+  variable.norm              string
+  variable.default(string)   ""
+  variable.default(integer)  0
+  variable.default(decimal)  0
+  variable.default(boolean)  false
+  variable.default(%)        0
+  entity.active              true
+  entity.tags                "" (boş etiket kümesi)
+  encounter.norm             percentage (= %)
+  encounter.base-chance      0
+  encounter.chance           base-chance
+  encounter.trigger          turn
+  encounter.enabled          true
+  encounter.reset-on-success false
+  mechanic.norm              integer
+  mechanic.min               0
+  mechanic.max               100
+  mechanic.default           0
+  mechanic.trigger           on-change
+  mechanic.run-on-init       false
+  choice.count               1
+  choice.pressed             remove
+  choice.add-as              0
+  page.mode                  append
+
+4.3. Veri tipleri
+  string      Serbest metin.
+  integer     Tam sayı; kesirli sonuç geçersiz.
+  decimal     Ondalıklı sayı; ondalık ayıracı nokta (.).
+  boolean     true veya false.
+  percentage  0..100 aralığında sayısal yüzde; norm="%" eşanlamlıdır.
+
+4.4. Sınırlar ve dönüştürme
+- min <= default <= max ve min <= max zorunludur.
+- Statlar tam sayıdır; integer dışındaki norm stat için çekirdekte desteklenmez.
+- Sayısal state değerleri min/max aralığına clamp edilir: aralığı aşarsa en
+  yakın sınıra ayarlanır. Tip uyuşmazlığı clamp değil doğrulama hatasıdır.
+- Percentage 0..100 aralığına clamp edilir.
+- String'e sayı/boolean sessizce dönüştürülmez; veri tipi açık olmalıdır.
+- Boolean string olarak "true"/"false" ile kodlanır fakat semantik boolean'dır.
+- Sıfıra bölme hatadır. Integer'a kesirli sonuç üreten bölme de hatadır.
+
+4.5. İsim ve açıklamalar
+- 'name' kullanıcı arayüzünde görülebilecek etikettir.
+- 'description-ai' yalnızca ai-access izin veriyorsa model bağlamına girer.
+- 'description-noai' yalnızca yerel uygulama/veri katmanı için ayrılır.
+- description-noai'deki bilgi, AI prompt'una, araç özetlerine veya görünür
+  komut hata detaylarına sızdırılmamalıdır.
+
+==========================================================================
+5. NESNE TANIMLARI: <add /> [ÇEKİRDEK]
+==========================================================================
+
+5.1. STAT
+
+Stat global bir özellik tanımıdır; entity'ler bu tanıma ayrı değerlerle bağlanır.
+
+<add
+  type="stat"
+  id="strength"
+  name="Strength"
+  norm="integer"
+  min="0"
+  max="200"
+  default="15"
+  ai-access="read"
+  description-ai="Represents the character's physical power."
+  description-noai="Show this value in the character sheet."
+/>
+
+Stat'ın kendisi tek bir karaktere ait değildir. Bağlama yapılmadıkça ayrı bir
+entity değeri oluşmaz. Varsayılan norm=integer olduğundan belirtmek isteğe bağlıdır.
+
+5.2. ENTITY
+
+Oyuncu, NPC ve diğer oyun varlıklarını temsil eder.
+
+<add
+  type="entity"
+  id="alex"
+  name="Alex"
+  tags="human,npc,merchant"
+  active="true"
+  description-ai="A cautious traveling merchant."
+/>
+
+Entity'ye özgü özellikler:
+  tags    Virgülle ayrılmış etiketler; yinelenen etiketler tekilleştirilir.
+  active  true/false. false durumunda entity silinmez, statları korunur;
+          otomatik olaylarda varsayılan olarak işlenmez.
+
+'player' Runtime tarafından önceden oluşturulur. Yeni <add type="entity"
+id="player" /> gönderilmesi mükerrer kimlik hatasıdır.
+
+5.3. VARIABLE
+
+Global, tür kontrollü veri saklar; stat'ın aksine bir entity bağlantısı aramaz.
+
+<add type="variable" id="weather" norm="string" default="Sunny" />
+<add type="variable" id="door_open" norm="boolean" default="false" />
+<add type="variable" id="gold" norm="integer" min="0" default="100" />
+<add type="variable" id="morale" norm="percentage" default="35" />
+<add type="variable" id="temperature" norm="decimal" default="-3.5" />
+
+Variable için norm değişikliği veri göçü gerektiren yapısal değişikliktir;
+varsayılan olarak AI tarafından serbestçe yapılamaz.
+
+5.4. ENCOUNTER
+
+Encounter, gerçekleşme olasılığına sahip kontrollü rastgele olaydır.
+
+<add
+  type="encounter"
+  id="getting_robbed"
+  name="Getting Robbed"
+  base-chance="15"
+  trigger="turn"
+  enabled="true"
+  reset-on-success="false"
+/>
+
+Temel özellikler:
+  norm             percentage/%; otomatik, açıkça yazmak gerekmez.
+  base-chance      Başlangıç olasılığı, 0..100.
+  chance           Runtime'ın sakladığı GÜNCEL olasılık.
+  trigger          turn veya manual.
+  enabled          true veya false.
+  reset-on-success Başarılı olaydan sonra chance sıfırlansın mı?
+
+5.5. MECHANIC
+
+Mechanic, başka bir değeri veya kendi değerini izleyen çalıştırılabilir kuraldır.
+
+<add
+  type="mechanic"
+  id="brave"
+  name="Bravery Mechanic"
+  source="bravery"
+  entity="david"
+  trigger="on-change"
+  run-on-init="false"
+/>
+
+  source      Stat, sayısal variable veya sayısal mechanic kimliği; isteğe bağlı.
+  entity      source stat ise hangi entity örneğinin izlendiği; yoksa player.
+  trigger     on-change / on-turn / manual.
+  run-on-init Oluşturma/yapılandırma sonrası ilk uygun değerlendirme yapılsın mı?
+
+source belirtilmezse mechanic kendi integer state değerini değerlendirir.
+Mechanic'in kendi değeri için min/max/default (0/100/0) desteklenir.
+
+==========================================================================
+6. NESNE YAPILANDIRMA: <configure /> / <conf /> [ÇEKİRDEK]
+==========================================================================
+
+6.1. Genel
+
+<configure id="strength" name="Physical Strength" default="20" />
+<conf id="strength" max="150" />
+
+Yalnız belirtilen alanlar değiştirilir. Genel tanım alanları, nesnenin türünün
+izin verdiği ölçüde yapılandırılır; bilinmeyen alanlar hata üretir.
+
+6.2. Stat'ın entity'ye bağlanması: link
+
+<configure id="dexterity" link="alex" />
+<configure id="defense" link="player" value="6" />
+<configure id="strength" link="all" />
+
+Kurallar:
+- Stat Alex'e bağlı değilse yeni örnek oluşturulur; değeri stat default olur.
+- Bağlıysa ve value YOKSA mevcut değer korunur.
+- Bağlıysa ve value VARSA örneğin değeri belirtilen değere ayarlanır.
+- link="all" şu anda kayıtlı bütün entity'leri kapsar; gelecektekileri değil.
+- Stat olmayan nesnelerde link özelliği geçersizdir.
+- link sırasında verilen value, mutlak başlangıç değeri olarak yorumlanır;
+  value="+5" gibi göreli işlemler için <modify> kullanılmalıdır.
+
+6.3. Otomatik bağlantı
+
+<configure id="health" auto-link="true" />
+
+- true: mevcut entity'lere bağlanır; sonradan eklenenlere de bağlanır.
+- false: yeni otomatik bağlantıları durdurur; var olanları silmez.
+- İstenmeyen statların tüm NPC'lere eklenmemesi için varsayılan false'tur.
+
+6.4. Bağlantıyı kaldırma: unlink
+
+<configure id="strength" unlink="alex" />
+
+Sadece ilgili entity'nin stat örneğini kaldırır; global tanımı silmez.
+Bir configure çağrısında link ve unlink birlikte kullanılamaz.
+Auto-link açıkken unlink yapılırsa mevcut bağlantı kaldırılır; entity tekrar
+oluşturulmadıkça otomatik yeniden eklenmez. Yeni entity'lerde kural sürer.
+
+6.5. Stat tanım özellikleri
+
+<configure
+  id="strength"
+  name="Physical Strength"
+  min="0"
+  max="150"
+  default="20"
+  description-ai="Used in physical checks."
+/>
+
+- Yeni default yalnızca gelecek bağlantıların başlangıç değerini etkiler.
+- Önceden bağlı entity değerleri default değişince sıfırlanmaz.
+- min/max daraltılırsa mevcut örnekler yeni aralığa clamp edilir.
+- Norm değişikliği tip göçü gerektirdiği için çekirdekte yasaktır.
+
+6.6. Entity yapılandırması
+
+<configure id="alex" name="Alexander" tags="human,npc" active="true" />
+
+Buradaki tags özelliği mevcut etiket listesini tamamen değiştirir.
+
+6.7. Variable yapılandırması
+
+<configure id="gold" min="0" max="9999" default="100" />
+
+- min/max gerekiyorsa yeni sınırlar güncel state'e clamp uygulanarak etkinleşir.
+- default değişimi var olan variable'ın güncel state'ini otomatik değiştirmez.
+- norm değişimi varsayılan olarak desteklenmez; explicit migration gerektirir.
+- Güncel değeri değiştirmek için <modify> kullanılır.
+
+6.8. Encounter yapılandırması
+
+<configure id="getting_robbed" base-chance="20" enabled="true" />
+
+- base-chance değişince 'chance' de yeni base-chance değerine sıfırlanır.
+- trigger turn/manual ve reset-on-success true/false desteklenir.
+- İçeride requirement/rule condition ile check-success/check-fail kullanılır.
+- Aynı konfigürasyonda birden fazla farklı koşul tanımlanabilir.
+- Tekrar gönderilen aynı kimlikli kuralın üst üste eklenmesini önlemek için
+  [UYGULAMA NOTU] condition/section bloklarına dahili stabil kural kimliği
+  atanmalı ve kayıtlı tanım güncellenebilmelidir. Varsayılan basit kural:
+  Her configure çağrısında gönderilen alt bloklar yeni blok olarak eklenir;
+  aynı blokları yeniden eklemek yinelenen çalışmaya yol açar. Bunun için
+  ileride 'rule-id' desteklenmesi önerilir.
+
+6.9. Mechanic yapılandırması
+
+<configure id="brave" source="bravery" entity="david" trigger="on-change">
+  <section range="[0,40)">
+    <modify id="strength" entity="david" value="+3" />
+  </section>
+</configure>
+
+- source güncellenirse mechanic artık yeni kaynağı izler.
+- source değişiminde önceki section aralık geçmişi temizlenir.
+- on-change için yeni kaynak değeri beklenir (run-on-init=true ise ilk kez
+  değerlendirilir).
+
+==========================================================================
+7. DEĞER DEĞİŞTİRME: <modify /> [ÇEKİRDEK]
+==========================================================================
+
+7.1. Mutlak stat atama
+
+<modify id="strength" entity="player" value="15" />
+
+7.2. Göreli stat atama
+
+<modify id="strength" entity="player" value="+5" />
+<modify id="dexterity" entity="player" value="-3" />
+
+7.3. Global stat default'unu değiştirme
+
+<modify id="strength" value="15" />
+
+ÖNEMLİ: id bir stat ise entity YOKLUĞUNDA o stat'ın global default değeri
+hedeflenir, otomatik olarak oyuncunun statı değiştirilmez. Bu, ilk taslağın
+semantiğini korur. Oyuncunun statı için entity="player" açıkça yazılmalıdır.
+
+7.4. Global variable
+
+<modify id="weather" value="Rainy" />
+<modify id="door_open" value="true" />
+<modify id="gold" value="-20" />
+
+- Variable/encounter/mechanic için 'entity' çekirdekte kullanılmaz; bu nesneler
+  globaldir (mechanic'in source.entity özelliği ayrı bir konudur).
+- Encounter'a modify uygulamak 'chance'i değiştirir, base-chance'i değil.
+- Mechanic'e modify uygulamak mechanic'in kendi state değerini değiştirir;
+  izlediği external source otomatik olarak değişmez.
+
+7.5. Açık işlem operatörü
+
+<modify id="gold" op="set" value="100" />
+<modify id="gold" op="add" value="20" />
+<modify id="gold" op="sub" value="10" />
+<modify id="gold" op="mul" value="2" />
+<modify id="gold" op="div" value="4" />
+
+Açık 'op' belirtilmişse 'value' mutlak operand olarak yorumlanır.
+Bu ifade ile negatif sayı atamak mümkündür:
+
+<modify id="temperature" op="set" value="-10" />
+
+7.6. Legacy value yorumlama
+- op YOKKEN value="15"  -> set(15).
+- op YOKKEN value="+5"  -> add(5).
+- op YOKKEN value="-3"  -> sub(3).
+- op YOKKEN value="Happy" -> set("Happy") (string tipte).
+- Literal negatif değer yazarken op="set" zorunludur.
+- Float operandlar '.' ile yazılır: value="+1.5".
+- String/boolean için add/sub/mul/div hata üretir.
+
+7.7. Hatalar ve sınırlar
+- Belirtilen stat ilgili entity'ye bağlı değilse hata oluşur.
+- Bilinmeyen id, yetki dışı işlem, tip uyuşmazlığı hata üretir.
+- Integer stat için kesirli sonuç hatadır.
+- Min/max aşımında clamp uygulanır, geçersiz tipte uygulanmaz.
+- op="div" ve value="0" hata üretir.
+
+==========================================================================
+8. KOŞULLAR: <condition>, <then>, <else> [ÇEKİRDEK]
+==========================================================================
+
+8.1. Basit koşul
+
+<condition id="strength" entity="player" op="gte" value="30">
+  <then>
+    <modify id="gold" value="+10" />
+  </then>
+  <else>
+    <modify id="gold" value="-5" />
+  </else>
+</condition>
+
+- condition tek başına pasif bir kuraldır; kendiliğinden her an çalışmaz.
+- Bir encounter, mechanic veya üst olay onu değerlendirdiğinde çalışır.
+- then yalnızca doğruysa, else yalnızca yanlışsa çalışır.
+- every sınırına takılmak koşulun yanlış olması demek değildir.
+
+8.2. Stat için entity çözümleme
+
+<condition id="strength" op="gte" value="30" />
+
+Stat koşulunda entity yoksa player varsayılır. Stat player'a bağlı değilse
+koşul oluşturulamaz/başarıyla değerlendirilemez; sessiz varsayılan stat eklenmez.
+Variable, encounter ve kendi state'ini kullanan mechanic koşullarında entity
+gerekmez. Encounter koşulu güncel chance değeriyle kıyaslanır.
+
+8.3. Birleşik koşullar
+
+<condition mode="all">
+  <condition id="strength" entity="player" op="gte" value="30" />
+  <condition id="dexterity" entity="player" op="gte" value="20" />
+  <then>
+    <modify id="gold" value="+50" />
+  </then>
+</condition>
+
+mode="all" -> bütün çocuk condition'lar doğru olmalı.
+mode="any" -> en az bir çocuk condition doğru olmalı.
+
+Önerilen deterministik değerlendirme: çocuklar yazıldıkları sırada kısa devre
+(short-circuit) ile test edilir. Grupların en az bir çocuk condition'ı olmalıdır.
+Birleşik condition'lardaki doğrudan çocuk koşullar yalnızca test olarak
+kullanılır; yan etki üreten then/else işlemleri grubun sonuç bloğunda bulunur.
+
+8.4. Karşılaştırma türleri
+- eq/neq: sayısal, string, boolean için geçerli.
+- gt/gte/lt/lte: yalnızca sayısal türler.
+- Metin eşitliği tam ve büyük-küçük harfe duyarlıdır.
+- Bir integer ile decimal karşılaştırması sayısal olarak yapılabilir.
+- Bilinmeyen ID veya yanlış tür, false yerine doğrulama hatası oluşturur.
+
+8.5. Koşulların iç içe kullanımı
+
+<condition mode="all">
+  <condition id="gold" op="gte" value="100" />
+  <condition mode="any">
+    <condition id="door_open" op="eq" value="true" />
+    <condition id="weather" op="eq" value="Sunny" />
+  </condition>
+  <then>
+    <modify id="gold" value="-100" />
+  </then>
+</condition>
+
+==========================================================================
+9. GERÇEKLEŞME SINIRI: every="Y:X" [ÇEKİRDEK]
+==========================================================================
+
+9.1. Sözdizimi
+
+  every="1:4" -> 4 tur boyunca en fazla 1 kez.
+  every="3:5" -> herhangi 5 turda en fazla 3 kez.
+  every="2:10" -> herhangi 10 turda en fazla 2 kez.
+  every="1:0" -> oyun boyunca en fazla 1 kez.
+  every="3:0" -> oyun boyunca en fazla 3 kez.
+  every="2:" -> 2:0 ile eşdeğer.
+  every="1:1" -> her turda bir kez çalışabilir.
+
+Y > 0 ve X >= 0 tam sayı olmalıdır. X > 0, Y >= X ise en fazla tek
+çalıştırma yapılan tur-temelli blok pratikte her tur uygun olabilir.
+
+9.2. Kayan pencere
+
+Sınır sabit 1-4, 5-8 gibi bloklara bölünmez. Son X turdaki gerçekleşmeler
+sayılır. İşlem 5. turda 'every=1:4' ile çalıştıysa 6, 7, 8. turlarda
+çalışamaz; 9. turda tekrar mümkün olur.
+
+9.3. Yerleşim
+
+<condition id="vulnerability" entity="player" op="gt" value="10">
+  <then every="1:4">
+    <modify id="getting_robbed" value="+10" />
+  </then>
+  <else every="3:5">
+    <modify id="vulnerability" entity="player" value="+1" />
+  </else>
+</condition>
+
+Bu sürümde every, yürütülebilir işlem bloğunda kullanılır: then, else,
+section, check-success veya check-fail. Tekil <modify> üzerinde her tur
+anlamında otomatik kontrol yapmaz.
+
+9.4. Sayaçlar
+- Her kayıtlı blok kendi gerçekleşme geçmişine sahiptir.
+- Blok başarılı şekilde yürütülüp state kaydedilince sayaç artar.
+- Koşul yanlışsa veya limit doluysa artmaz.
+- Komut grubunun bir bölümü hata verip geri alınırsa sayaç artmaz.
+- Aynı blok turda birden fazla olayla tetiklenirse every=1:1 en fazla 1 kez
+  çalıştırır. Böylece olay kaskadı tekrarları kontrol altında tutulur.
+
+==========================================================================
+10. TUR VE OLAY DÖNGÜSÜ [ÇEKİRDEK]
+==========================================================================
+
+10.1. Tur oluşturan işlemler
+- Kullanıcının oyun içi yeni mesaj göndermesi.
+- Kullanıcının aktif bir choice'a basması.
+
+Tur OLUŞTURMAYAN işlemler
+- AI'ın bir yanıt metni üretmesi.
+- Bir yanıtta çok sayıda V-HTML komutu bulunması.
+- Geçmiş sayfalarda gezinme, sayfayı görüntüleme.
+- UI'ın otomatik olarak yenilenmesi.
+
+10.2. Önerilen deterministik yürütme akışı
+  1. Oyuncu girdisi/choice tıklaması alınır ve doğrulanır.
+  2. Seçim eylemleri sırayla gerçekleştirilir; başarıyla biten değişiklikler
+     işlem grubunun sonunda atomik olarak kaydedilir.
+  3. Tur sayacı 1 artırılır.
+  4. Değer değişimi olayları FIFO kuyruğunda işlenir.
+  5. on-turn mechanic'ler tanımlanma sırasıyla değerlendirilir.
+  6. turn trigger'lı, enabled encounter'lar uygunluk koşullarına tabi tutulur.
+  7. Uygun encounter kuralları chance'i değiştirebilir, ardından roll yapılır.
+  8. Roll başarılı/başarısız ise ilgili event handler çalışır.
+  9. Zincirle tetiklenen state değişimi olayları bitene kadar kuyruğa alınır.
+ 10. Oyun durumu ve olay kaydı kalıcı olarak yazılır.
+ 11. Bekleyen AI devam istekleri, geçerli sayfa hedefi ve filtrelenmiş son
+     oyun durumu kullanılarak işlenir.
+
+10.3. Olay kaskadı güvenliği
+- Bir state değişimi başka mechanic'i tetikleyebilir.
+- Runtime, tur başına maksimum olay zinciri uzunluğu uygular (ör. 1000).
+- Sınır aşılırsa olay yürütme kontrollü hata ile durdurulur.
+- Olaylar kaydediliş sırası/FIFO kuralıyla işlenir, rastgele sırada değil.
+- Aynı kendini tekrar tetikleyen mechaniclere döngü koruması uygulanır.
+
+10.4. RNG (rastgelelik)
+- Yalnız Runtime rastgele sayı üretir; model tarafından üretilen metin roll
+  sonucunun yerine geçmez.
+- Test ve kayıtlar için RNG seed / üretilen roll değerleri saklanabilir.
+- Encounter roll'u [0,100) aralığındaki sayıyla gerçekleştirilir;
+  roll < chance ise başarıdır.
+
+==========================================================================
+11. ENCOUNTER: OLASILIK, KOŞUL, BAŞARI VE BAŞARISIZLIK [ÇEKİRDEK]
+==========================================================================
+
+11.1. Tanım ve mevcut olasılık
+
+<add type="encounter" id="getting_robbed" base-chance="15" />
+
+Yeni encounter için chance=15 başlar.
+
+<modify id="getting_robbed" value="+10" />
+
+Bu işlem chance=25 yapar, base-chance=15 kalır.
+
+<configure id="getting_robbed" base-chance="20" />
+
+Bu işlem hem base-chance'i hem chance'i 20 yapar.
+
+11.2. Chance sınırları
+- 0 <= chance <= 100; aralık dışı sonuç clamp edilir.
+- chance 0 ise hiçbir roll başarılı olamaz.
+- chance 100 ise her uygun roll başarılıdır.
+
+11.3. Trigger ve enabled
+  trigger="turn": her oyuncu turunda en fazla 1 roll denenir.
+  trigger="manual": yalnız açık Runtime çağrısıyla roll yapılır.
+  enabled="false": otomatik roll yapılmaz, manuel çağrı da reddedilir.
+
+Manuel encounter kontrolünün V-HTML üzerinden kısa sözdizimi yeni <check />
+uzantısında tanımlanmıştır; çekirdekte Runtime API/servis çağrısı kullanılabilir.
+
+11.4. Koşul rolleri
+  role="requirement"  Roll yapılabilmesi için doğru olmalıdır.
+  role="rule"         Roll öncesi then/else işlemleri için değerlendirilir.
+                      Varsayılan role budur; roll'u engellemez.
+
+Requirement yalnızca doğrulama yapar; ona bağlı then/else kullanılmaz.
+Birden çok requirement varsa hepsi geçerli olmalıdır. Requirement false
+olursa roll YAPILMAZ ve check-fail ÇALIŞMAZ.
+
+11.5. Örnek: gece + kırılganlık
+
+<vhtml version="3.0">
+  <add type="variable" id="time_of_day" norm="string" default="Day" />
+  <add type="stat" id="vulnerability" default="5" />
+  <configure id="vulnerability" link="player" />
+  <add type="encounter" id="getting_robbed" base-chance="10" />
+
+  <configure id="getting_robbed">
+    <condition id="time_of_day" op="eq" value="Night" role="requirement" />
+    <condition id="vulnerability" entity="player" op="gt" value="10" role="rule">
+      <then every="1:4">
+        <modify id="getting_robbed" value="+10" />
+      </then>
+      <else every="3:5">
+        <modify id="vulnerability" entity="player" value="+1" />
+      </else>
+    </condition>
+    <check-success>
+      <modify id="vulnerability" entity="player" value="-2" />
+    </check-success>
+  </configure>
+</vhtml>
+
+Davranış: yalnız Night iken roll yapılır. Her uygun turda Vulnerability
+koşulunun rule işlemleri uygulanır, sonra güncel chance ile roll yapılır.
+Başarılı olursa Vulnerability 2 azalır.
+
+11.6. check-success / check-fail
+
+<configure id="random_compliment">
+  <check-success>
+    <modify id="confidence" entity="player" value="+1" />
+  </check-success>
+  <check-fail>
+    <modify id="confidence" entity="player" value="-1" />
+  </check-fail>
+</configure>
+
+Bu örnek, random_compliment ve confidence daha önce eklenmiş ve confidence
+player'a bağlanmışsa geçerlidir.
+
+- check-success yalnız başarılı roll'da yürütülür.
+- check-fail yalnız gerçekten yapılan başarısız roll'da yürütülür.
+- Requirement tutmadığı için atlanan kontrol başarısız roll sayılmaz.
+- Handler bloklarına gerektiğinde every sınırı eklenebilir.
+
+11.7. reset-on-success
+- false: başarıdan sonra chance mevcut değerinde kalır.
+- true: başarılı roll sonrasında chance önce base-chance'e sıfırlanır,
+  ardından check-success handler'ı çalıştırılır.
+- Böylece check-success içindeki modify, yeni temelden sonraki olasılığı
+  bilinçli olarak ayarlayabilir.
+
+==========================================================================
+12. MECHANIC: SOURCE, TRIGGER VE SECTION [ÇEKİRDEK]
+==========================================================================
+
+12.1. Source çözümleme
+- source stat ise 'entity' ile o statın bağlı örneği okunur.
+- source variable ise global sayısal current value okunur.
+- source mechanic ise ilgili mechanic'in sayısal current value'su okunur.
+- source yoksa mechanic'in kendi sayısal değeri kullanılır.
+- source string/boolean veri olamaz; section sayısal değer bekler.
+- source olmayan mechanic'in varsayılan değeri 0'dır.
+
+12.2. Trigger türleri
+  on-change: izlenen değer değiştiğinde çalışır.
+  on-turn: her oyuncu turunda bir kez değerlendirilir.
+  manual: yalnız Runtime tetiklemesiyle çalışır.
+
+12.3. Section aralık gösterimi
+
+  range="[0,40)"    -> 0 dahil, 40 hariç.
+  range="[40,80)"   -> 40 dahil, 80 hariç.
+  range="[80,100]"  -> 80 ve 100 dahil.
+  range="(0,100)"   -> iki sınır da hariç.
+
+Bitişik aralıklar mümkünse çakışmayacak biçimde yazılmalıdır.
+Birden fazla section aynı değeri kapsıyorsa tanımlandıkları sırayla hepsi
+çalışır; bu yüzden çakışmalar bilinçli tasarlanmalıdır.
+
+12.4. Örnek: bravery
+
+<vhtml version="3.0">
+  <add type="entity" id="david" />
+  <add type="stat" id="strength" default="10" />
+  <add type="stat" id="bravery" default="10" />
+  <configure id="strength" link="david" />
+  <configure id="bravery" link="david" />
+  <add type="mechanic" id="brave" source="bravery" entity="david"
+       trigger="on-change" run-on-init="false" />
+
+  <configure id="brave">
+    <section range="[0,40)">
+      <modify id="strength" entity="david" value="+3" />
+    </section>
+    <section range="[40,80)">
+      <modify id="strength" entity="david" value="+6" />
+    </section>
+    <section range="[80,100]">
+      <modify id="strength" entity="david" value="+9" />
+    </section>
+  </configure>
+</vhtml>
+
+12.5. on-change davranışı: aralığa giriş
+- run-on-init=false ise mechanic tanımlandığı anda hiçbir section işlemi
+  gerçekleştirilmez; mevcut aralık hatırlanır.
+- Kaynak değiştiğinde eski/yeni aralıklar kıyaslanır.
+- Yeni aralığa girilmişse ilgili section bir kez çalışır.
+- Aynı aralık içinde değer değişse bile section tekrar çalışmaz.
+- İki farklı aralığın dışından birine girmek de giriş sayılır.
+- run-on-init=true ise tanımdan sonra uygun aralık ilk kez çalışır.
+
+12.6. on-turn davranışı
+- Her tur section'lar güncel source değeri ile değerlendirilir.
+- Eşleşen her section her tur çalışabilir; gerekiyorsa every ile sınırla.
+- Bu davranış 'on-change' giriş semantiğinden bilinçli olarak farklıdır.
+
+12.7. Geçici bonus uyarısı
+- <modify value="+6"/> KALICI stat artışıdır.
+- Önceki aralıkta alınan +3 kendi kendine geri alınmaz.
+- Geçici aralık bonusları için [ÖNERİLEN UZANTI] <effect> kullanılmalıdır.
+- On-change örneği yalnız aralığa geçişte kalıcı kazanım örneğidir;
+  aktif durum buff'ının tam karşılığı değildir.
+
+==========================================================================
+13. CHOICE: TANIM, GÖRÜNÜRLÜK, KULLANIM VE TRANSFORM [ÇEKİRDEK]
+==========================================================================
+
+13.1. Yeni seçenek
+
+<choice
+  id="00001"
+  label="Wear the cursed ring [+3 STR, -2 DEX]"
+  count="1"
+  pressed="remove"
+  add-as="1"
+>
+  <then>
+    <modify id="strength" entity="player" value="+3" />
+    <modify id="dexterity" entity="player" value="-2" />
+  </then>
+</choice>
+
+Oyuncu tıklarsa then işlemleri sırayla çalışır; count 1 azalır; kullanım
+hakkı sıfırlanınca pressed davranışı uygulanır.
+
+13.2. label/name
+- Görünen yazı 'label' ile tanımlanır.
+- Choice için 'name' 'label' ile eşanlamlı olarak kabul edilir.
+- İkisi aynı anda kullanılırsa çelişki hatası üretilir.
+
+13.3. count
+- Varsayılan 1; pozitif tam sayı olmalıdır.
+- Aktif choice örneğinin kalan kullanım sayısı tutulur.
+- Her başarılı tıklama kalan hakkı bir azaltır.
+- İşlem başarısız olur ve geri alınırsa hak eksilmez.
+
+13.4. pressed
+  remove:    Kullanım hakkı bitince ekran üzerinden kaldır.
+  stay:      Görünür bırak ama tıklanamaz yap.
+  transform: Yeni bir seçim ile değiştir; <transform> alt bloğu gerekir.
+
+NOT: Orijinal metindeki 'change' ifadesi tek isim 'transform' olarak
+standartlaştırılmıştır.
+
+13.5. add-as ve gösterim
+- add-as="0": şablonu kaydet, ancak aktif sayfada gösterme.
+- add-as="1": ilgili aktif sayfadaki seçenekler arasında 1. sıraya yerleştir.
+- Pozitif diğer sayılar artan görsel sıra sağlar; sıra çakışırsa eklenme
+  sırası ile kararlı (stable) yerleşim yapılır.
+- Varsayılan add-as=0'dır.
+
+13.6. Şablon ve aktif örnek
+- Choice'ın kalıcı özellikleri TEMPLATE'te bulunur.
+- Ekrandaki bir choice, template'ten oluşturulmuş ACTIVE INSTANCE'tır.
+- Aktif örneğin kendi 'remaining_count' ve geçici override değerleri vardır.
+- Choice template'leri global ID alanını kullanır; aktif örnek sayfaya aittir.
+- Aynı ID, aynı sayfada birden fazla aktif kopyaya dönüşmez. Yeniden
+  aktivasyon yeni örnekle eskisini değiştirir.
+
+13.7. Tekrar aktive etme ve override
+
+<choice id="00001" add-as="1" count="2" />
+
+Kayıtlı template değişmez; yalnız yeni aktif örnekte count=2 olur.
+
+<choice id="00001" add-as="1" />
+
+Yeni örnek template'in orijinal count'unu kullanır (örneğin 1).
+Eksik alanlar her zaman template'ten okunur. Gösterilmiş eski örneğin
+remaining_count değeri aktarılmaz. Yeniden aktivasyon açıktan istendiği
+için bu sıfırlama amaçlanan davranıştır.
+
+13.8. Transform
+
+<choice id="wear_ring" label="Wear the cursed ring" count="1"
+        pressed="transform" add-as="1">
+  <then>
+    <modify id="strength" entity="player" value="+3" />
+    <modify id="dexterity" entity="player" value="-2" />
+  </then>
+  <transform id="remove_ring" label="Remove the cursed ring" count="1"
+             pressed="remove" add-as="1">
+    <then>
+      <modify id="strength" entity="player" value="-3" />
+      <modify id="dexterity" entity="player" value="+2" />
+    </then>
+  </transform>
+</choice>
+
+- Seçenek 'wear_ring' ilk kez tıklandığında +3/-2 uygulanır.
+- Hak bitince görünür 'wear_ring', 'remove_ring' ile değiştirilir.
+- 'remove_ring' tıklanırsa -3/+2 uygulanır, sonra kaldırılır.
+- Yeni id global alanda benzersiz olmalıdır.
+- Transform şablonu iç içe tanımlanır; ancak yeni şablonun kaydı ve
+  aktivasyonu dönüşüm gerçekleştiğinde yapılır.
+- Transform'lu choice, count dolmadan dönüşmez.
+- Transform içindeki then yalnız yeni choice tıklanınca çalışır.
+
+13.9. Choice ve sayfalar
+- Choice tanımı global saklanır; aktif örnek bir sayfaya bağlıdır.
+- Başka sayfaya geçmek önceki sayfanın seçim haklarını silmez.
+- Aynı choice template'i başka sayfalarda ayrı aktif örneklere sahip olabilir.
+
+==========================================================================
+14. AI KOMUTU: <ai /> [ÇEKİRDEK]
+==========================================================================
+
+14.1. Temel kullanım
+
+<choice id="wake_her" label="Wake her up" add-as="1">
+  <then>
+    <ai />
+  </then>
+</choice>
+
+14.2. Talimat ile kullanım
+
+<choice id="wake_her_angry" label="Wake her up" add-as="1">
+  <then>
+    <ai instruction="She wakes up angry." />
+  </then>
+</choice>
+
+14.3. İşlem semantiği
+- <ai /> modelin hikâyeye devam etmesi için bir istek oluşturur.
+- instruction sadece bu devam isteğinin ek yönlendirmesidir.
+- AI talimatı sistem yetkilerini aşamaz.
+- İstek tamamlanmadan önce izinli oyun durumu güncellenmiş olur.
+- Her ai isteği komutun yürütüldüğü andaki çıktı sayfasını hedef olarak
+  kaydeder; ardından durum commit edildiğinde model çağrısı başlar.
+- AI'ın yanıt üretmesi kendiliğinden yeni oyuncu turu değildir.
+- AI yanıtından çıkarılan komutlar yeniden ayrıştırılıp izin ve onay denetimine
+  sokulur; model metni doğrudan güvenilir kod olarak yürütülmez.
+
+==========================================================================
+15. PAGE: SAYFA YÖNETİMİ [ÇEKİRDEK]
+==========================================================================
+
+15.1. Sayfa oluşturma
+
+<page mode="next" page-id="market" />
+
+'page-id' yeni sayfanın benzersiz kimliğidir. Verilmezse Runtime yeni kimlik
+oluşturur. Yeni sayfa aktif olur. Aynı page-id ile next yeni sayfa oluşturmaz;
+mükerrer sayfa kimliği hatası verir. Mevcut sayfaya gitmek için go-to kullan.
+
+15.2. Mevcut sayfaya gitme
+
+<page go-to="market" />
+
+Var olan sayfayı açar; sayfa yeniden oluşturulmaz. Bilinmeyen sayfa hata üretir.
+Bu biçimde mode kullanılmayabilir; go-to ile next bir arada kullanılmaz.
+
+15.3. Append ve Next
+  mode="append": aktif sayfaya içerik ekleme hedefi belirler; yeni sayfa yok.
+  mode="next": yeni sayfa yaratır ve onu aktif içerik hedefi yapar.
+
+15.4. Sayfa durumunu koruma
+- Sayfadan ayrılmak onu silmez.
+- İçerik, görünür seçenekler ve kalan tıklama hakları korunur.
+- Daha sonra go-to ile açıldığında saklanan hali gösterilir.
+- Sadece gezinme tur sayacını artırmaz.
+
+15.5. AI sıralaması (önemli sözdizimi standardı)
+
+ÖNERİLEN:
+
+<choice id="go_to_mall" label="Go to the Mall" add-as="1">
+  <then>
+    <page mode="next" />
+    <ai instruction="The mall is closed." />
+  </then>
+</choice>
+
+Önce page ile çıktı hedefi seçilir, sonra AI devamı talep edilir.
+
+Bunun ters sırası:
+  <ai />
+  <page mode="next" />
+
+AI isteğini ÖNCEKİ sayfaya bağlar, ardından yeni sayfa açar. İlk taslaktaki
+bu sıra karışıklığa yol açabileceği için normalize edilmiştir.
+
+15.6. go-to ve append/next önceliği
+- go-to varsa, var olan sayfaya gezinme yapılır; ayrı yeni sayfa oluşturulmaz.
+- mode="next" ve go-to birlikte kullanılırsa doğrulama hatası verilir.
+- go-to ve mode="append" birlikte yazılırsa var olan hedef sayfaya gidilir ve
+  sonraki içerik o sayfaya eklenir.
+
+==========================================================================
+16. AI-ACCESS VE GÜVENLİK [ÇEKİRDEK]
+==========================================================================
+
+16.1. Üç erişim seviyesi
+  none     Model erişimine sunulmaz; model kaynaklı değişiklik reddedilir.
+  read     Model durumunu görebilir, güncel değeri değiştiremez.
+  modify   Model güncel değeri okuyabilir ve değiştirme isteği yapabilir.
+
+Varsayılan read'dir. 'modify', sınırsız yönetici yetkisi değildir.
+
+16.2. Yetki sınırları
+- Model kaynaklı modify için hedefin ai-access="modify" olması gerekir.
+- Model kaynaklı configure ile yapısal kuralların, norm/min/max/id, güvenlik
+  alanlarının değiştirilmesi varsayılan olarak kullanıcı onayı gerektirir.
+- AI'ın yeni kalıcı nesne/choice/sayfa şablonu oluşturma istekleri kullanıcı
+  onayından geçmelidir. Geçici hikâye metni yazması onay gerektirmez.
+- Kullanıcının doğrudan verdiği komutlarla AI'ın ürettiği komutlar ayrı
+  güven sınıflarındadır; AI komutlarını kullanıcı komutu gibi çalıştırma.
+- description-noai hiçbir model çağrısına eklenmez.
+- Gizli nesnelerin varlığını hata mesajları üzerinden sızdırmamaya dikkat et.
+
+16.3. Örnek
+
+<add type="stat" id="secret_power" ai-access="none" />
+<add type="stat" id="confidence" ai-access="modify" />
+
+Model secret_power'a erişemez. Confidence için uygun entity bağlantısı varsa
+modelin stat değiştirme isteği, diğer güvenlik kuralları da sağlandığında
+Runtime tarafından işlenebilir.
+
+16.4. Kod çalıştırma / enjeksiyon
+- V-HTML XML tabanlı deklaratif bir DSL'dir; keyfi JavaScript/Python eval
+  veya shell komutları çalıştırmaya izin verilmez.
+- AI'ın açıklama/instruction metnini güvenilir komut kaynağı olarak yorumlama.
+- XML parser güvenli yapılandırılmalı: dış varlıklar (XXE), DTD ve harici
+  kaynak çözümlenmesi kapalı tutulmalıdır.
+
+==========================================================================
+17. ATOMİK YÜRÜTME, HATALAR, KAYIT VE GERİ ALMA [ÇEKİRDEK]
+==========================================================================
+
+17.1. İşlem grupları
+- Bir then/else/check-success/check-fail/section bloğundaki state komutları
+  tek atomik işlem grubu olarak uygulanır.
+- Grubun bir komutu hata üretirse bu grubun daha önce yaptığı state
+  değişiklikleri geri alınır; ilgili every/choice sayacı da ilerlemez.
+- Başka bağımsız başarılı blokların işlemleri geri alınmaz.
+- Harici AI çağrıları state commit edildikten sonra başlatılır; geri alınan
+  state değişikliklerine dayalı AI devamı üretilmez.
+
+17.2. Tipik hata kodları (önerilen standart)
+  XML_SYNTAX_ERROR        XML bozuk veya eksik kapanış var.
+  UNKNOWN_COMMAND         Bilinmeyen etiket.
+  INVALID_ATTRIBUTE       Geçersiz/çelişkili özellik.
+  UNKNOWN_ID              Nesne kimliği bulunamadı.
+  DUPLICATE_ID            Nesne kimliği başka tanımda kullanılıyor.
+  INVALID_TYPE            Veri tipi uyuşmazlığı.
+  MISSING_STAT_BINDING    Entity'nin gerekli stat bağlantısı yok.
+  PERMISSION_DENIED       Kaynak yetkisiz.
+  DIVISION_BY_ZERO        Sıfıra bölme.
+  INVALID_RANGE           min/max veya section aralığı geçersiz.
+  EVENT_LOOP_LIMIT        Olay kaskadı güvenlik sınırı aşıldı.
+  PAGE_NOT_FOUND          go-to hedefi yok.
+  CHOICE_UNAVAILABLE      Seçenek görünmez, pasif veya hakkı bitti.
+
+17.3. Geçmiş ve kaydetme
+- Registry, State, Bindings, Choice şablonları ve aktif örnekler, Pages,
+  sayaçlar, oyun turu ve RNG olay kayıtları bir save-state'in parçalarıdır.
+- Undo/redo düşünülüyorsa state değişiklikleri ayrı işlem kayıtlarıyla tutulur.
+- Geçmiş kayıtları AI'ın erişebileceği alandan ayrı saklanabilir.
+- Save-state yüklerken vhtml sürümü ve şema sürümü doğrulanmalıdır.
+
+==========================================================================
+18. TAM ÖRNEK SENARYOLAR [ÇEKİRDEK]
+==========================================================================
+
+18.1. Karakterler, statlar ve değişkenler
+
+<vhtml version="3.0">
+  <add type="entity" id="alex" name="Alex" tags="human,npc" />
+  <add type="entity" id="david" name="David" tags="human,npc" />
+  <add type="stat" id="strength" default="10" />
+  <add type="stat" id="dexterity" default="10" />
+  <add type="stat" id="health" min="0" max="100" default="100" />
+  <add type="variable" id="gold" norm="integer" min="0" default="100" />
+  <add type="variable" id="weather" norm="string" default="Sunny" />
+  <configure id="strength" link="all" />
+  <configure id="dexterity" auto-link="true" />
+  <configure id="health" auto-link="true" />
+  <modify id="strength" entity="alex" value="15" />
+  <modify id="strength" entity="david" value="20" />
+</vhtml>
+
+Sonuç:
+- player, alex, david mevcut entity'lerdir.
+- Strength, player/alex/david'e bağlıdır; Alex=15, David=20.
+- Dexterity ve Health mevcut ve gelecekteki entity'lere otomatik bağlanır.
+- Gold=100, Weather=Sunny globaldir.
+
+18.2. Seçim, durum değişikliği ve AI devamı
+
+<vhtml version="3.0">
+  <add type="stat" id="strength" default="10" />
+  <add type="stat" id="dexterity" default="10" />
+  <configure id="strength" link="player" />
+  <configure id="dexterity" link="player" />
+  <choice id="wear_ring" label="Wear the cursed ring" count="1"
+          pressed="transform" add-as="1">
+    <then>
+      <modify id="strength" entity="player" value="+3" />
+      <modify id="dexterity" entity="player" value="-2" />
+      <ai instruction="Describe a cold pulse from the ring." />
+    </then>
+    <transform id="remove_ring" label="Remove the cursed ring" count="1"
+               pressed="remove" add-as="1">
+      <then>
+        <modify id="strength" entity="player" value="-3" />
+        <modify id="dexterity" entity="player" value="+2" />
+        <ai instruction="Describe the ring's influence fading." />
+      </then>
+    </transform>
+  </choice>
+</vhtml>
+
+Bu, orijinal taslağın 'yüzük' senaryosudur. Buradaki buff geçici effect
+değildir: statı doğrudan değiştirir ve çıkarma seçeneği geri alır.
+
+18.3. Gece gerçekleşebilen rastgele olay
+
+<vhtml version="3.0">
+  <add type="variable" id="time_of_day" norm="string" default="Day" />
+  <add type="stat" id="vulnerability" default="5" />
+  <configure id="vulnerability" link="player" />
+  <add type="encounter" id="getting_robbed" base-chance="10"
+       trigger="turn" reset-on-success="true" />
+  <configure id="getting_robbed">
+    <condition id="time_of_day" role="requirement" op="eq" value="Night" />
+    <condition id="vulnerability" entity="player" op="gt" value="10">
+      <then every="1:4">
+        <modify id="getting_robbed" value="+10" />
+      </then>
+      <else every="3:5">
+        <modify id="vulnerability" entity="player" value="+1" />
+      </else>
+    </condition>
+    <check-success>
+      <ai instruction="The player is approached by a robber." />
+    </check-success>
+  </configure>
+</vhtml>
+
+Weather/time-of-day yalnızca örnek veri değişkenleridir. Burada Night
+koşulu true olmadıkça hiç roll yapılmaz. Roll başarılıysa chance base-chance'e
+döner; ardından AI anlatım isteği üretilir.
+
+18.4. Sayfa geçişi
+
+<choice id="go_mall" label="Go to the Mall" add-as="1">
+  <then>
+    <page mode="next" page-id="mall_visit" />
+    <ai instruction="Describe the mall as closed for the night." />
+  </then>
+</choice>
+
+==========================================================================
+19. YENİ ÖZELLİK ÖNERİLERİ: UZANTI KATALOĞU
+==========================================================================
+
+Bu bölümdeki özellikler [ÖNERİLEN UZANTI] statüsündedir. Kod biçimleri
+önerilmiştir; çekirdek yorumlayıcı bunları henüz tanımı gereği kabul etmek
+zorunda değildir. Desteklenmeleri için dil sürümü ve uyumluluk bildirimi gerekir.
+
+19.1. <effect> — Geçici, takip edilebilir etkiler [ÖNERİLEN UZANTI]
+
+GEREKÇE: modify doğrudan güncel state'i kalıcı olarak değiştirir. Ekipman,
+zehir, buff, debuff, aura gibi geçici değişiklikler için ayrı katman gerekir.
+
+<effect
+  id="bravery_bonus"
+  target="strength"
+  entity="david"
+  value="+5"
+  duration="3"
+  stack="replace"
+/>
+
+Önerilen davranış:
+- target stat id'si; entity ilgili stat örneğidir.
+- duration tur sayısı veya "permanent" olabilir.
+- stack="replace": aynı effect tekrar gelirse eski etkisini yeniler.
+- stack="add": ayrı süreli stack'ler eklenebilir.
+- stack="max": aynı etki ailesinde yalnız en güçlü etki işler.
+- Effect BASE stat değerini değiştirmez; efektif değer ayrı hesaplanır.
+- Effect süresi bitince ek değer otomatik kaldırılır.
+- condition/source'da base mi effective değer mi okunacağı seçilebilir;
+  önerilen varsayılan effective değerdir.
+- Manuel remove için ileride <remove-effect id="..."/> veya
+  <effect id="..." action="clear"/> tasarlanabilir.
+- Stack/potansiyel çarpma sırası sabit tutulmalıdır.
+
+ÖRNEK MECHANIC ENTEGRASYONU (tasarım örneği):
+
+<configure id="brave">
+  <section range="[40,80)">
+    <effect id="brave_mid" target="strength" entity="david"
+            value="+6" duration="permanent" stack="replace" />
+  </section>
+</configure>
+
+NOT: Aralıktan ÇIKIŞTA sürekli effect'in kaldırılması için ayrıca lifecycle
+kuralı gerekir; yalnız yukarıdaki örneği çalıştırmak çıkışta kaldırma yapmaz.
+Önerilen geliştirme: section'a on-enter/on-exit blokları veya kaynak aralığına
+bağlı effect scope'u eklemek.
+
+19.2. <trigger> — Olay aboneliği [ÖNERİLEN UZANTI]
+
+<trigger event="on-change" id="health" entity="player">
+  <condition id="health" entity="player" op="lte" value="20">
+    <then>
+      <ai instruction="Describe the player's critical condition." />
+    </then>
+  </condition>
+</trigger>
+
+Önerilen olay adları:
+  on-change, on-turn, on-create, on-death, on-choice, on-enter-page.
+
+Trigger bir olay dinler. Olay geldiğinde koşulu değerlendirir ve uygun eylemleri
+çalıştırır. Hangi events'in bir kez mi yoksa her değişimde mi çalışacağı
+etkinlik bazlı tanımlanmalıdır. Örneğin Health 15'ten 14'e inerken tekrar
+narration üretmemek için 'edge="enter"' özelliği eklenebilir.
+
+19.3. Dinamik değer referansları: value-ref [ÖNERİLEN UZANTI]
+
+<modify id="health" entity="player" op="sub" value-ref="enemy.attack" />
+
+Amaç başka bir nesnenin değerini operand olarak kullanmaktır. Temel kararlar:
+- value ve value-ref aynı komutta birlikte kullanılamaz.
+- Referans biçimi standardize edilmeli; öneri entity.stat biçimi.
+- Örneğin 'enemy.attack' -> enemy entity'sinin attack stat değeri.
+- Global variable için 'gold' veya 'var.gold' biçimi seçilebilir; isim
+  çakışmalarını engellemek için 'var.gold' tavsiye edilir.
+- Referans çözülemiyorsa varsayılan değer üretmek yerine hata verilir.
+- Matematiksel formül ihtiyacı doğarsa value-ref'in üzerine kontrollü
+  expression sözdizimi eklenmelidir; eval kullanılmamalıdır.
+
+19.4. <input> — Oyuncudan veri alma [ÖNERİLEN UZANTI]
+
+<input
+  id="character_name_input"
+  label="What is your name?"
+  norm="string"
+  save-to="player_name"
+  required="true"
+/>
+
+- save-to var olan, türü uyumlu variable kimliğini hedefler.
+- input kendi kendine variable oluşturmaz (açık kayıt zorunludur).
+- required=true iken boş yanıt kabul edilmez.
+- Input gönderimi ayrı oyuncu eylemi/tur olarak sayılabilir; önerilen
+  varsayılan evet, çünkü hikâye açısından oyuncu eylemidir.
+- UI alanı, sayfa kimliği ve gizlilik kuralları ayrı doğrulanmalıdır.
+
+19.5. <check> — Manuel encounter kontrolü [ÖNERİLEN UZANTI]
+
+<choice id="open_chest" label="Open the chest" add-as="1">
+  <then>
+    <check id="chest_trap" />
+  </then>
+</choice>
+
+- 'chest_trap' trigger="manual" encounter olarak tanımlanmalıdır.
+- check encounter uygunluk koşullarını kontrol eder, ardından roll yapar.
+- Başarı/başarısızlık ilgili handler'ı tetikler.
+- enabled=false ise çalıştırılmaz.
+- Tek kullanıcı eyleminde otomatik tur başına roll + manuel check çakışırsa
+  kayıtlı her açık çağrı ayrı değerlendirilmelidir; otomatik turn trigger'lı
+  encounter manuel check ile kontrol edilmesin, yalnız manual türü kabul et.
+
+19.6. <ui> — Oyun arayüzü bağlama [ÖNERİLEN UZANTI]
+
+<ui type="stat-bar" id="health" entity="player"
+    position="sidebar" label="Health" />
+
+Önerilen type'lar:
+  stat-bar, text, counter, panel, entity-card.
+
+- UI bileşeni veri kaynağını izler, görüntüyü günceller.
+- UI değişikliği state'i değiştirmez.
+- AI erişimi olmayan nesnelerin AI tarafından oluşturulan UI'da görünürlüğü
+  kullanıcı onayı ve ayrı sunum yetkisi ile değerlendirilmelidir.
+- Global UI ile page-local UI farklı scope'lara sahip olmalıdır.
+
+19.7. <remove> — Nesne yaşam döngüsü [ÖNERİLEN UZANTI]
+
+<remove id="temporary_npc" />
+
+- Önce yalnız geçici nesnelerde ve kullanıcı onayıyla silme önerilir.
+- Silinen entity'ye bağlı stat örnekleri, choice referansları ve source
+  bağımlılıklarının akıbeti kararlaştırılmalıdır.
+- Kalıcı veri kaybı yerine archive/deactivate yaklaşımı daha güvenlidir.
+- Stat bağlantısını kaldırmak için çekirdekte zaten unlink vardır.
+
+19.8. <random> — Genel amaçlı zar/sayı [ÖNERİLEN UZANTI]
+
+<random min="1" max="20" norm="integer" save-to="dice_roll" />
+
+- dice_roll önceden oluşturulmuş uyumlu türde global variable olmalıdır.
+- Integer min/max dahil aralıktan eş olasılıklı sayı üretir.
+- Decimal üretim için aralık ve dağılım açıkça tanımlanmalıdır.
+- RNG çekirdek encounter RNG'si gibi Runtime tarafından yönetilmeli ve
+  istenirse seed/sonuç loglanmalıdır.
+
+==========================================================================
+20. ÖNERİLEN DİĞER İYİLEŞTİRMELER
+==========================================================================
+
+20.1. İçsel kural kimliği: rule-id
+
+Problem: Aynı <configure id="getting_robbed"> bloğu iki kere gelirse
+condition aynı mekanikte iki kez çalışabilir. Çözüm olarak:
+
+<condition rule-id="vulnerability_bonus" id="vulnerability"
+           entity="player" op="gt" value="10"> ... </condition>
+
+Yeni bir rule-id benzersiz kural oluşturur; aynı rule-id tekrar gelirse
+kuralı güncelleme veya versiyonlama yapılır. Bu, AI'ın tekrar gönderdiği
+komutlara karşı idempotency sağlar. Mevcut çekirdek özelliği değil, öneridir.
+
+20.2. Section on-enter / on-exit
+
+Geçici bonusların güvenli yönetimi için bir aralığa girildiğinde ve çıkıldığında
+farklı bloklar tetiklenebilir. Örnek hedef sözdizimi:
+
+<section range="[40,80)">
+  <on-enter>
+    <effect id="brave_mid" target="strength" entity="david"
+            value="+6" duration="permanent" stack="replace" />
+  </on-enter>
+  <on-exit>
+    <remove-effect id="brave_mid" />
+  </on-exit>
+</section>
+
+Bu örnekteki on-enter/on-exit/remove-effect de öneridir; çekirdek değildir.
+
+20.3. Referanslı, scope'u belirli UI
+- scope="global": tüm sayfalarda ortak gösterilen gösterge.
+- scope="page": yalnız ilgili sayfanın bileşeni.
+- Görünürlük için condition tabanlı UI display kontrolü.
+
+20.4. Olay günlüğü ve geliştirici hata ayıklayıcısı
+- Hangi command hangi state'i değiştirdi?
+- Hangi rule trigger oldu veya atlandı?
+- Hangi encounter hangi chance ve roll ile başarıya ulaştı?
+- Hangi user/AI kaynağı komutu önerdi; onaylandı mı?
+- Tur öncesi ve sonrası state diff çıktısı.
+
+20.5. İleri yaşam döngüleri
+- Inventory/equipment için yeni nesne türleri düşünülebilir; stat
+  buff'ları doğrudan modify yerine effect katmanından uygulanmalıdır.
+- Quest için ayrı görev tanımı ve objective state'i eklenebilir.
+- Relationship sistemi entity çiftleri arasında değer saklayabilir.
+- Save/load, rollback ve versiyon migrasyonu ilk günden tasarlanmalıdır.
+
+==========================================================================
+21. ÖNCELİK VE GELİŞTİRME YOL HARİTASI
+==========================================================================
+
+P0 — Temel oyun mantığının güvenilirliği
+  1. Parser + şema doğrulayıcı + ID registry.
+  2. Stat definition / instance, variable ve entity bağlama modeli.
+  3. State transaction ve olay döngüsü.
+  4. AI erişim filtresi, onay politikası, hata kaydı.
+  5. Dinamik değer referansları (önerilen uzantı).
+  6. Effect sistemi (önerilen uzantı).
+  7. Trigger altyapısı (önerilen uzantı).
+
+P1 — Etkileşim ve RPG UX
+  8. Choice/template/transform yaşam döngüsü.
+  9. Page/AI hedef sayfa yönetimi.
+ 10. Input alanları (önerilen uzantı).
+ 11. UI binding ve global/page görünümü (önerilen uzantı).
+ 12. Manuel encounter check (önerilen uzantı).
+
+P2 — Genişletilebilirlik
+ 13. Random komutu.
+ 14. Güvenli remove/archive.
+ 15. rule-id, idempotent configure ve migrate desteği.
+ 16. Condition/reference expression desteği.
+ 17. Geliştirici debug paneli ve replay testi.
+
+==========================================================================
+22. MİNİMUM TEST MATRİSİ (INTERPRETER KABUL KRİTERLERİ)
+==========================================================================
+
+TEST 01: Aynı global id ile iki add => DUPLICATE_ID.
+TEST 02: <configure id="strength" link="alex"/> => ilk bağlamada default.
+TEST 03: Bağlı aynı stat'a yeniden link (value yok) => değer korunur.
+TEST 04: auto-link=true sonrası yeni entity => otomatik bağlantı.
+TEST 05: Stat default güncellendi => mevcut entity değeri korunur.
+TEST 06: Stat min/max daraltıldı => mevcut değerler clamp edilir.
+TEST 07: Stat entity belirtmeden modify => yalnız global default değişir.
+TEST 08: entity="player" olmayan stat örneği => MISSING_STAT_BINDING.
+TEST 09: modify op=set value=-10 => literal negatif; op yoksa -10 çıkarma.
+TEST 10: Integer division 5/2 => INVALID_TYPE; division zero => hata.
+TEST 11: condition mode=all ve any => doğru mantıksal sonuç.
+TEST 12: every=1:4 tur 5'te çalıştı => tur 6/7/8 engel, 9 izin.
+TEST 13: Condition false => else; limit engeli => else çalışmamalı.
+TEST 14: Requirement false => encounter roll yok; check-fail yok.
+TEST 15: chance 0 => fail; chance 100 => success.
+TEST 16: base-chance configure => current chance reset.
+TEST 17: reset-on-success=true => reset, sonra success-handler çalışır.
+TEST 18: mechanic on-change aynı aralık içinde => tekrar action yok.
+TEST 19: mechanic on-turn => her tur değerlendirir, every uygulanır.
+TEST 20: Choice aktif count=2 => 2 tıklama; sonra pressed uygulanır.
+TEST 21: Choice yeniden aktive edildi => kalan hak template'den tazelenir.
+TEST 22: Transform sonunda yeni id kaydedilir, eski aktif seçim kalkar.
+TEST 23: page mode=next => yeni sayfa; go-to => mevcut sayfa.
+TEST 24: Sayfalar arası gezinme => tur artmaz, aktif haklar korunur.
+TEST 25: page->ai => AI hedefi yeni sayfa; ai->page => eski sayfa.
+TEST 26: AI read-only stat modify isteği => PERMISSION_DENIED.
+TEST 27: AI none nesnesi => AI Context'e dahil edilmez.
+TEST 28: XML'de kaçışsız & => XML_SYNTAX_ERROR.
+TEST 29: Atomik blok ortasında hata => block rollback, counter korunur.
+TEST 30: Birbirini tetikleyen kural döngüsü => EVENT_LOOP_LIMIT.
+
+==========================================================================
+23. HIZLI REFERANS
+==========================================================================
+
+Nesne oluştur:
+  <add type="stat" id="strength" default="10" />
+  <add type="entity" id="alex" />
+  <add type="variable" id="gold" norm="integer" default="100" />
+  <add type="encounter" id="ambush" base-chance="10" />
+  <add type="mechanic" id="brave" source="bravery" entity="player" />
+
+Yapılandır:
+  <configure id="strength" link="alex" value="20" />
+  <conf id="health" auto-link="true" />
+  <configure id="strength" unlink="alex" />
+
+Değer değiştir:
+  <modify id="gold" value="+10" />
+  <modify id="temperature" op="set" value="-10" />
+  <modify id="strength" entity="player" value="+2" />
+  <modify id="strength" value="15" />  (global default)
+
+Koşul:
+  <condition id="strength" entity="player" op="gte" value="20" />
+  <condition mode="any"> ... </condition>
+
+Oyuncu seçeneği:
+  <choice id="wake_her" label="Wake her up" add-as="1">
+    <then><ai /></then>
+  </choice>
+
+Sayfa + AI:
+  <page mode="next" page-id="garden" />
+  <ai instruction="Describe the garden at dawn." />
+
+Every:
+  <then every="1:4"> ... </then>
+
+Mekanik aralık:
+  <section range="[40,80)"> ... </section>
+
+--------------------------------------------------------------------------
+SÖZLÜK
+--------------------------------------------------------------------------
+- Definition: Bir nesnenin değişmeyen/yapılandırılabilen global tanımı.
+- Instance: Bir global tanımın belirli entity/sayfa için fiilî örneği.
+- Current value: Şu anda kayıtlı olan güncel değer.
+- Default value: Yeni örneklerin başlangıç değeri.
+- Trigger: Olay gerçekleştiğinde kural çalıştıran tetikleme düzeni.
+- Requirement: Olayın kontrol edilmesini engelleyebilen önkoşul.
+- Rule: Önkoşulu engellemeyen ancak sonuç üreten kural.
+- Every: Y:X biçiminde kayar tur penceresi/sayaç sınırı.
+- Template: Choice'ın kalıcı tanımı.
+- Active instance: Seçeneğin belirli sayfada görünen kopyası.
+- Clamp: Sayısal değeri min/max sınırlarının içinde tutma.
+- Atomic transaction: Ya bütün durum değişikliklerinin uygulanması ya
+  da o grup için hiç uygulanmaması.
+- AI Context: Modelin okumasına izin verilen filtrelenmiş oyun durumu.
+
+==========================================================================
+24. SONUÇ VE SÜRÜMLEME NOTU
+==========================================================================
+
+V-HTML 3.0'ın çekirdek modelinde:
+- add tanım yaratır;
+- configure tanımı ve davranış kurallarını düzenler;
+- modify güncel veri değiştirir;
+- condition/section mekanikleri koşullandırır;
+- encounter kontrollü rastgele olayları yönetir;
+- choice oyuncu eylemlerini birleştirir;
+- page çıktı yüzeyini ve gezinmeyi yönetir;
+- ai filtrelenmiş duruma göre hikâyeyi sürdürür.
+
+Genişletme katmanı olarak effect, trigger, input, check, ui, remove, random ve
+value-ref eklenirse sistem yalnızca sohbet içi rol yapma değil, veri tabanlı
+küçük bir interaktif RPG motoruna dönüşebilir.
+
+UYGULAMA UYARISI: Bu belge normatif hedef tasarımı anlatır; uygulamada hangi
+özelliklerin fiilen desteklendiği ayrı bir özellik tablosuyla izlenmelidir.
+Önerilen uzantıları, sürüm/özellik kontrolü olmadan çekirdekmiş gibi çalıştırma.
+
+BELGE SONU
